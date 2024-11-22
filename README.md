@@ -4,11 +4,12 @@
   <img alt="modula logo" src="assets/modula.svg">
 </picture>
 
-Modula is a deep learning framework designed for graceful scaling. Neural networks written in Modula automatically transfer learning rate across scale.
+Modula will be a Python framework for fast, scalable & robust deep learning. And [the docs](https://docs.modula.systems/) will be a good place to learn the mathematics of deep learning.
 
-We are slowly writing [the Modula docs](https://docs.modula.systems/). Check them out for an accessible introduction to scaling theory and the Modula API. Also, here are some [slides](https://docs.google.com/presentation/d/1mCp6weIty9BzFFmx7LUGk2MPmNi-m-yKjigQ9wnycng/edit?usp=sharing) for a talk that Jeremy gave, that provide a more visual introduction to Modula. And here is [Modulax](https://github.com/GallagherCommaJack/modulax/) by Jack Gallagher. And here is a barebones implementation of [Modula in NumPy](https://colab.research.google.com/drive/1lKS15RJilGsstYP5JDQKSn3Z7TUUYIDQ?usp=sharing).
-
-Modula is an experimental framework based on our research paper: [Scalable Optimization in the Modular Norm](https://arxiv.org/abs/2405.14813).
+More resources:
+- [slides](https://docs.google.com/presentation/d/1mCp6weIty9BzFFmx7LUGk2MPmNi-m-yKjigQ9wnycng/edit?usp=sharing) for a talk that Jeremy gave
+- [Modulax](https://github.com/GallagherCommaJack/modulax/) by Jack Gallagher
+- a barebones implementation of [Modula in NumPy](https://colab.research.google.com/drive/1lKS15RJilGsstYP5JDQKSn3Z7TUUYIDQ?usp=sharing).
 
 ## Quick start
 
