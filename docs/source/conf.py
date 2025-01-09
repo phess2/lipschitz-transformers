@@ -2,8 +2,8 @@
 
 # -- Project information -----------------------------------------------------
 project = 'Modula'
-copyright = '2024, modula-authors'
-author = 'modula-authors'
+copyright = '2024, Jeremy Bernstein'
+author = 'Jeremy Bernstein'
 
 # -- General configuration ---------------------------------------------------
 extensions = [
