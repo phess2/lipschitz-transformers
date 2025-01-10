@@ -1,6 +1,6 @@
 ## Served docs
 
-The docs are automatically served to [https://jeremybernste.in/modula/](https://jeremybernste.in/modula/).
+The docs are automatically served to [https://docs.modula.systems/](docs.modula.systems/).
 
 ## Building the docs locally
 
