@@ -10,7 +10,6 @@ extensions = [
 	"sphinx_copybutton",
 	"sphinx_inline_tabs",
     "sphinx.ext.autodoc",
-    "sphinx.ext.githubpages",
     "matplotlib.sphinxext.plot_directive",
 	"sphinxext.opengraph",
     "sphinx_design",
@@ -39,7 +38,6 @@ html_theme = 'furo'
 html_static_path = ['_static']
 html_css_files = ['custom.css']
 html_title = "docs.modula.systems"
-html_baseurl = "docs.modula.systems"
 html_favicon = 'favicon.ico'
 html_theme_options = {
     "light_logo": "logo-light.svg",
