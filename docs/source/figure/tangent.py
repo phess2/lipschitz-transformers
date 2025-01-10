@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.colors import LightSource
 
 def create_tangent_space_plot():
     fig = plt.figure(figsize=(16, 9))
@@ -9,9 +10,11 @@ def create_tangent_space_plot():
     fig.patch.set_alpha(0)
     ax.patch.set_alpha(0)
 
-    scale = 2.5
+    ls = LightSource(azdeg=160, altdeg=120)
+
+    scale = 3.0
     resolution = 150
-    z_offset = -1.5
+    z_offset = -0.9
     x_offset = -1.5
     
     u = np.linspace(0, 2 * np.pi, resolution)
@@ -20,14 +23,14 @@ def create_tangent_space_plot():
     y = scale * np.outer(np.sin(u), np.sin(v))
     z = scale * np.outer(np.ones(np.size(u)), np.cos(v)) + z_offset
     
-    ax.plot_surface(x, y, z, alpha=1.0, color='royalblue', antialiased=True)
+    ax.plot_surface(x, y, z, alpha=1.0, color='royalblue', antialiased=False, shade=True, lightsource=ls)
 
     point = scale * np.array([1/np.sqrt(2.5), 1/np.sqrt(2.5), 1/np.sqrt(5)]) + np.array([x_offset, 0, z_offset])
     v1 = np.array([-1/np.sqrt(2), 1/np.sqrt(2), 0])
     v2 = np.array([-1/np.sqrt(10), -1/np.sqrt(10), 2*np.sqrt(3/10)])
     
-    grid_size = 1.0
-    grid_points = 15
+    grid_size = 0.5
+    grid_points = 10
     xx = np.linspace(-grid_size, grid_size, grid_points)
     yy = np.linspace(-grid_size, grid_size, grid_points)
     XX, YY = np.meshgrid(xx, yy)
@@ -38,11 +41,11 @@ def create_tangent_space_plot():
             plane_points[i,j] = point + scale * (XX[i,j]*v1 + YY[i,j]*v2)
     
     ax.plot_surface(plane_points[:,:,0], plane_points[:,:,1], 
-                   plane_points[:,:,2], alpha=0.6, color='crimson',
-                   antialiased=True)
+                   plane_points[:,:,2], alpha=0.8, color='crimson',
+                   antialiased=False, shade=True, lightsource=ls, edgecolor='firebrick')
     
     ax.scatter([point[0]], [point[1]], [point[2]], 
-              color='black', s=150, alpha=0.4, zorder=100)
+              color='black', s=150, alpha=0.6, zorder=100)
 
     ax.set_xlim(-3.5, 1.5)
     ax.set_ylim(-2.5, 2.5)
