@@ -49,7 +49,7 @@ def create_tangent_space_plot():
     ax.set_zlim(-2.5, 1.5)
     
     ax.set_axis_off()
-    ax.view_init(elev=-40, azim=-40)
+    ax.view_init(elev=20, azim=-30)
     ax.set_box_aspect([1,1,0.8])
     
     return fig
