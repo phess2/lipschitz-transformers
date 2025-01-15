@@ -1,0 +1,4 @@
+docs/build/
+modula.egg-info/
+modula/__pycache__/
+examples/data/shakespeare/
