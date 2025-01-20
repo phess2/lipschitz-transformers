@@ -13,7 +13,8 @@ extensions = [
     "matplotlib.sphinxext.plot_directive",
 	"sphinxext.opengraph",
     "sphinx_design",
-    "sphinxcontrib.youtube"
+    "sphinxcontrib.youtube",
+    "myst_nb"
 ]
 templates_path = ['_templates']
 exclude_patterns = []
@@ -23,6 +24,9 @@ rst_prolog = """
     :language: python
     :class: highlight
 """
+
+# -- myst_nb -----------------------------------------------------------------
+nb_execution_mode = "off"
 
 # -- Opengraph ---------------------------------------------------------------
 ogp_site_url = "https://modula.systems"
