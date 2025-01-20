@@ -15,7 +15,7 @@ log_steps = 10
 # get MNIST dataset
 transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.1307,), (0.3081,))])
 dataset = datasets.MNIST('../data', train=True, download=True, transform=transform)
-train_loader = DataLoader(dataset1, batch_size=micro_batch_size, num_workers=1, pin_memory=True, shuffle=True)
+train_loader = DataLoader(dataset, batch_size=micro_batch_size, num_workers=1, pin_memory=True, shuffle=True)
 
 # create network
 mlp = Linear(10,10000) @ ReLU() @ Linear(10000, 784) @ Flatten()

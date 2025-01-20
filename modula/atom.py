@@ -45,6 +45,19 @@ class Linear(Module):
     def print_submodules(self):
         print(f"Linear module of shape {(self.out_features, self.in_features)} and mass {self.mass}.")
 
+class NSLinear(Linear):
+    def __init__(self, out_features, in_features, mass=1, steps=10):
+        super().__init__(out_features, in_features, mass)
+        self.steps = steps
+
+    @torch.no_grad()
+    def normalize(self, w, target_norm):
+        weight = w[0]
+        weight.div_(weight.norm())
+        for _ in range(self.steps):
+            # TODO: speed this up
+            weight.data = 1.5 * weight - 0.5 * weight @ weight.t() @ weight
+        weight.mul_(target_norm)
 
 class Conv2D(Module):
     def __init__(self, out_channels, in_channels, kernel_size=3, stride=1, padding=1, mass=1):
