@@ -14,7 +14,8 @@ extensions = [
 	"sphinxext.opengraph",
     "sphinx_design",
     "sphinxcontrib.youtube",
-    "myst_nb"
+    "nbsphinx",
+    "nbsphinx_link"
 ]
 templates_path = ['_templates']
 exclude_patterns = []
