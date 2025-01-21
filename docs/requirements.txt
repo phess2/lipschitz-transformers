@@ -6,4 +6,5 @@ sphinxext.opengraph
 matplotlib
 sphinx-design
 sphinxcontrib-youtube
-myst_nb
+nbsphinx
+nbsphinx_link

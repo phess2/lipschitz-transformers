@@ -12,10 +12,6 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v4
-    - name: Copy over example notebooks
-      run: |
-        mkdir -p docs/source/examples
-        cp -r examples/* docs/source/examples/
     - name: Build HTML
       uses: ammaraskar/sphinx-action@7.0.0
       with:

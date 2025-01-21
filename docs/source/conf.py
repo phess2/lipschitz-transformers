@@ -25,9 +25,6 @@ rst_prolog = """
     :class: highlight
 """
 
-# -- myst_nb -----------------------------------------------------------------
-nb_execution_mode = "off"
-
 # -- Opengraph ---------------------------------------------------------------
 ogp_site_url = "https://modula.systems"
 ogp_image = "https://docs.modula.systems/_static/logo-square.jpeg"
