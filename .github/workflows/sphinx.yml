@@ -12,6 +12,8 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v4
+    - name: Install Pandoc
+      uses: r-lib/actions/setup-pandoc@v2
     - name: Build HTML
       uses: ammaraskar/sphinx-action@7.0.0
       with:
