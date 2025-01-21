@@ -8,3 +8,4 @@ sphinx-design
 sphinxcontrib-youtube
 nbsphinx
 nbsphinx_link
+IPython
