@@ -32,7 +32,7 @@ class Linear(Atom):
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
-        return [weight]
+        return self.project([weight])
 
     def project(self, w):
         weight = w[0]
