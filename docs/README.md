@@ -8,5 +8,6 @@ To build these docs locally do:
 ```bash
 cd docs
 pip install -r requirements.txt
+conda install -c conda-forge pandoc
 make livedirhtml
 ```
