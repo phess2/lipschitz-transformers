@@ -6,6 +6,8 @@ modula/__pycache__/
 docs/build/
 docs/jupyter_execute/
 
+docs/source/examples/assets/
+
 examples/.ipynb_checkpoints/
 examples/data/*
 !examples/data/*.py
