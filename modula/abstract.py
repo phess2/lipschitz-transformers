@@ -27,17 +27,12 @@ class Module:
                 m.tare(relative = relative)
 
     def jit(self):
-        self.forward  = jax.jit(self.forward)
-        self.backward = jax.jit(self.backward)
-        self.project  = jax.jit(self.project)
-        self.dualize  = jax.jit(self.dualize)
+        self.forward = jax.jit(self.forward)
+        self.project = jax.jit(self.project)
+        self.dualize = jax.jit(self.dualize)
 
     def forward(self, x, w):
-        # Input and weight list --> output and list of internal activations.
-        raise NotImplementedError
-
-    def backward(self, w, grad_output):
-        # Weight list and output gradient --> weight gradient list and input gradient.
+        # Input and weight list --> output
         raise NotImplementedError
 
     def initialize(self, key):
@@ -101,9 +96,9 @@ class CompositeModule(Module):
         m0, m1 = self.children
         w0 = w[:m0.atoms]
         w1 = w[m0.atoms:]
-        x0, activations0 = m0.forward(x, w0)
-        x1, activations1 = m1.forward(x0, w1)
-        return x1, activations0 + activations1
+        x0 = m0.forward(x, w0)
+        x1 = m1.forward(x0, w1)
+        return x1
 
     def initialize(self, key):
         m0, m1 = self.children
@@ -115,18 +110,6 @@ class CompositeModule(Module):
         w0 = w[:m0.atoms]
         w1 = w[m0.atoms:]
         return m0.project(w0) + m1.project(w1)
-
-    def backward(self, w, acts, grad_output):
-        m0, m1 = self.children
-        w0 = w[:m0.atoms]
-        w1 = w[m0.atoms:]
-        acts0 = acts[:m0.atoms+m0.bonds]
-        acts1 = acts[m0.atoms+m0.bonds:]
-
-        grad_w1, grad_input1 = m1.backward(w1, acts1, grad_output)
-        grad_w0, grad_input0 = m0.backward(w0, acts0, grad_input1)
-
-        return grad_w0 + grad_w1, grad_input0
 
     def dualize(self, grad_w, target_norm=1.0):
         if self.mass > 0:
@@ -151,24 +134,11 @@ class TupleModule(Module):
 
     def forward(self, x, w):
         output_list = []
-        act_list = []
         for m in self.children:
-            output, act = m.forward(x, w[:m.atoms])
+            output = m.forward(x, w[:m.atoms])
             output_list.append(output)
-            act_list += act
             w = w[m.atoms:]
-        return output_list, act_list
-
-    def backward(self, w, acts, grad_output):
-        grad_w = []
-        grad_input = 0
-        for m, grad_output_m in zip(self.children, grad_output):
-            grad_w_m, grad_input_m = m.backward(w[:m.atoms], acts[:m.atoms+m.bonds], grad_output_m)
-            grad_w += grad_w_m
-            grad_input += grad_input_m
-            w = w[m.atoms:]
-            acts = acts[m.atoms+m.bonds:]
-        return grad_w, grad_input
+        return output_list
 
     def initialize(self, key):
         w = []
@@ -204,10 +174,7 @@ class Identity(Bond):
         self.sensitivity = 1
 
     def forward(self, x, w):
-        return x, [None]
-
-    def backward(self, w, acts, grad_output):
-        return [], grad_output
+        return x
 
 class Add(Bond):
     def __init__(self):
@@ -216,10 +183,7 @@ class Add(Bond):
         self.sensitivity = 1
 
     def forward(self, x, w):
-        return sum(x), [None]
-
-    def backward(self, w, acts, grad_output):
-        return [], (grad_output, grad_output)
+        return sum(x)
 
 class Mul(Bond):
     def __init__(self, scalar):
@@ -228,7 +192,4 @@ class Mul(Bond):
         self.sensitivity = scalar
 
     def forward(self, x, w):
-        return x * self.sensitivity, [None]
-
-    def backward(self, w, acts, grad_output):
-        return [], grad_output * self.sensitivity
+        return x * self.sensitivity

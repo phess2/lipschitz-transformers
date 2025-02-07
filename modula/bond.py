@@ -9,9 +9,4 @@ class ReLU(Bond):
         self.sensitivity = 1
 
     def forward(self, x, w):
-        return jnp.maximum(0, x), [x]
-
-    def backward(self, w, acts, grad_output):
-        input = acts[0]
-        grad_input = (input > 0) * grad_output
-        return [], grad_input
+        return jnp.maximum(0, x)

@@ -29,14 +29,7 @@ class Linear(Atom):
 
     def forward(self, x, w):
         weights = w[0]
-        return weights @ x, [x]
-
-    def backward(self, w, acts, grad_output):
-        weights = w[0]
-        input = acts[0]
-        grad_input = weights.T @ grad_output
-        grad_weight = grad_output @ input.T
-        return [grad_weight], grad_input
+        return weights @ x
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
@@ -63,15 +56,7 @@ class Embed(Atom):
 
     def forward(self, x, w):
         weights = w[0]
-        return weights[:, x], [x]
-
-    def backward(self, w, acts, grad_output):
-        weights = w[0]
-        x = acts[0]
-        grad_input = None
-        grad_weight = jnp.zeros_like(weights)
-        grad_weight = grad_weight.at[:, x].add(grad_output[:,x])
-        return [grad_weight], grad_input
+        return weights[:, x]
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed))
