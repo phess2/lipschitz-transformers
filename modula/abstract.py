@@ -144,14 +144,14 @@ class TupleModule(Module):
         w = []
         for m in self.children:
             key, subkey = jax.random.split(key)
-            w.append(m.initialize(subkey))
+            w += m.initialize(subkey)
         return w
 
     def project(self, w):
         projected_w = []
         for m in self.children:
             projected_w_m = m.project(w[:m.atoms])
-            projected_w.append(projected_w_m)
+            projected_w += projected_w_m
             w = w[m.atoms:]
         return projected_w
 
