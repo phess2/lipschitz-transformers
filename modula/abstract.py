@@ -48,6 +48,8 @@ class Module:
         raise NotImplementedError
 
     def __matmul__(self, other):
+        if isinstance(other, tuple):
+            other = TupleModule(other)
         return CompositeModule(self, other)
 
     def __add__(self, other):
