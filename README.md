@@ -40,7 +40,7 @@ key = jax.random.PRNGKey(0)
 weights = mlp.initialize(key)
 ```
 
-Supposing we have used JAX to compute the gradient of our loss and stored this as grad, then we can use Modula to dualize the gradient, thereby accelerating our gradient descent training:
+Supposing we have used JAX to compute the gradient of our loss and stored this as `grad`, then we can use Modula to dualize the gradient, thereby accelerating our gradient descent training:
 
 ```python
 dualized_grad = mlp.dualize(grad)
