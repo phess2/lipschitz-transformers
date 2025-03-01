@@ -12,6 +12,16 @@ class ReLU(Bond):
     def forward(self, x, w):
         return jnp.maximum(0, x)
 
+
+class GeLU(Bond):
+    def __init__(self):
+        super().__init__()
+        self.smooth = False
+        self.sensitivity = 1
+
+    def forward(self, x, w):
+        return 2**0.5 * jax.nn.gelu(x)
+
 class AddHeads(Bond):
     """Reshapes an input to have heads.
 
