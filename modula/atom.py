@@ -28,8 +28,9 @@ class Linear(Atom):
         self.sensitivity = 1
 
     def forward(self, x, w):
-        weights = w[0]
-        return weights @ x
+        # x shape is [..., fanin]
+        weights = w[0]  # shape is [fanout, fanin]
+        return x @ weights.transpose()  # shape is [..., fanout]
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
@@ -55,8 +56,9 @@ class Embed(Atom):
         self.sensitivity = 1
 
     def forward(self, x, w):
-        weights = w[0]
-        return weights[:, x]
+        weights = w[0]  # shape [d_embed, num_embed]
+        embed = weights[:, x]  # shape [d_embed, x_shape]
+        return jnp.moveaxis(embed, 0, -1) # shape [x_shape, d_embed]
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed))
