@@ -115,8 +115,8 @@ class Rope(Bond):
             self.seq_len_cached = seq_len
             distance = jnp.arange(seq_len)
             freqs = jnp.outer(distance, self.inverse_frequencies)  # shape [seq_len, rope_dim]
-            cos = freqs.cos().expand_dims(0, 1)  # shape [1, 1, seq_len, rope_dim]
-            sin = freqs.sin().expand_dims(0, 1)  # shape [1, 1, seq_len, rope_dim]
+            self.cos_cached = jnp.expand_dims(jnp.cos(freqs), (0, 1))  # shape [seq_len, rope_dim]
+            self.sin_cached = jnp.expand_dims(jnp.sin(freqs), (0, 1))  # shape [seq_len, rope_dim]
         return self.sin_cached, self.cos_cached
     
     def rotate(self, x):
@@ -132,6 +132,6 @@ class Rope(Bond):
 
         return jnp.concat([y1, y2], axis=-1)
     
-    def forward(self, x):
+    def forward(self, x, w):
         q, k = x
         return self.rotate(q), self.rotate(k)
