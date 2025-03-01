@@ -59,10 +59,10 @@ class AttentionQK(Bond):
         self.sensitivity = 1  # what is this sensitivity?
     
     def forward(self, x, w):
-        q, k = x
+        q, k = x  # both shape [batch, n_heads, seq_len, d_query]
         scale = 1 / q.shape[-1]
-        scores = q @ k.transpose() * scale
-        return scores
+        scores = q @ k.transpose(0, 1, 3, 2) * scale
+        return scores  # shape [batch, n_heads, seq_len, seq_len]
 
 class CausalMask(Bond):
     """Masks the upper triangular part of the attention scores."""
