@@ -110,7 +110,7 @@ class Rope(Bond):
             sin = freqs.sin().expand_dims(0, 1)  # shape [1, 1, seq_len, rope_dim]
         return self.sin_cached, self.cos_cached
     
-    def forward(self, x):
+    def rotate(self, x):
         batch, n_heads, seq_len, d_head = x.shape
         assert self.rope_dim == d_head // 2
 
@@ -122,3 +122,7 @@ class Rope(Bond):
         y2 = -sin * x1 + cos * x2
 
         return jnp.concat([y1, y2], axis=-1)
+    
+    def forward(self, x):
+        q, k = x
+        return self.rotate(q), self.rotate(k)

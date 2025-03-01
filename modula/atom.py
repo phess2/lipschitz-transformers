@@ -46,7 +46,7 @@ class Linear(Atom):
 
 
 class Embed(Atom):
-    def __init__(self, d_embed,num_embed):
+    def __init__(self, d_embed, num_embed):
         super().__init__()
         self.num_embed = num_embed
         self.d_embed = d_embed

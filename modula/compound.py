@@ -14,7 +14,7 @@ def Attention(num_heads, d_embed, d_query, d_value, softmax_scale, causal):
     V = AddHeads(num_heads) @ Linear(num_heads * d_value, d_embed)
     W = Linear(d_embed, num_heads * d_value) @ RemoveHeads()
 
-    AttentionScores = Softmax(softmax_scale) @ CausalMask() @ AttentionQK() @ (Q, K)
+    AttentionScores = Softmax(softmax_scale) @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
     return W @ 1/3 * AttentionOutput() @ (V, AttentionScores)
 
 def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mass=5, softmax_scale=1.0):
