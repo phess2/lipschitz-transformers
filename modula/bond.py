@@ -51,7 +51,7 @@ class AttentionQK(Bond):
     def forward(self, x, w):
         q, k = x
         scale = 1 / q.shape[-1]
-        scores = q @ k.T * scale
+        scores = q @ k.transpose() * scale
         return scores
 
 class CausalMask(Bond):
@@ -82,8 +82,43 @@ class AttentionOutput(Bond):
     def __init__(self):
         super().__init__()
         self.smooth = True
-        self.sensitivity = 1  # what is this sensitivity?
+        self.sensitivity = 1
     
     def forward(self, x, w):
         v, scores = x
         return scores @ v
+
+class Rope(Bond):
+    """Rotates queries and keys by relative context window distance."""
+    def __init__(self, d_head, base=10000):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1  # rope is an orthogonal transformation
+
+        self.rope_dim = d_head // 2
+        self.inverse_frequencies = 1/base**(jnp.arange(self.rope_dim) / self.rope_dim)
+        self.seq_len_cached = None
+        self.sin_cached = None
+        self.cos_cached = None
+    
+    def get_cached(self, seq_len):
+        if self.seq_len_cached != seq_len:
+            self.seq_len_cached = seq_len
+            distance = jnp.arange(seq_len)
+            freqs = jnp.outer(distance, self.inverse_frequencies)  # shape [seq_len, rope_dim]
+            cos = freqs.cos().expand_dims(0, 1)  # shape [1, 1, seq_len, rope_dim]
+            sin = freqs.sin().expand_dims(0, 1)  # shape [1, 1, seq_len, rope_dim]
+        return self.sin_cached, self.cos_cached
+    
+    def forward(self, x):
+        batch, n_heads, seq_len, d_head = x.shape
+        assert self.rope_dim == d_head // 2
+
+        x1 = x[..., self.rope_dim:]  # shape [batch, n_heads, seq_len, rope_dim]
+        x2 = x[..., :self.rope_dim]  # shape [batch, n_heads, seq_len, rope_dim]
+
+        cos, sin = self.get_cached(seq_len)
+        y1 =  cos * x1 + sin * x2
+        y2 = -sin * x1 + cos * x2
+
+        return jnp.concat([y1, y2], axis=-1)
