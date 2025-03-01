@@ -81,11 +81,10 @@ class Softmax(Bond):
     def __init__(self, scale):
         super().__init__()
         self.smooth = True
-        self.sensitivity = scale / 2
-        self.scale = scale
+        self.sensitivity = scale
     
     def forward(self, x, w):
-        return jax.nn.softmax(self.scale * x, axis=-1)
+        return jax.nn.softmax(self.sensitivity * x, axis=-1)
 
 class AttentionOutput(Bond):
     """Computes attention values from the scores."""
