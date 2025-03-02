@@ -20,7 +20,7 @@ class GeLU(Bond):
         self.sensitivity = 1
 
     def forward(self, x, w):
-        return 2**0.5 * jax.nn.gelu(x)
+        return jax.nn.gelu(x) / 1.1289  # 1.1289 is the max derivative of gelu(x)
 
 class AddHeads(Bond):
     """Reshapes an input to have heads.
