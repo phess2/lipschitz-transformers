@@ -22,7 +22,7 @@ class GeLU(Bond):
     def forward(self, x, w):
         return jax.nn.gelu(x) / 1.1289  # 1.1289 is the max derivative of gelu(x)
 
-class AddHeads(Bond):
+class SplitIntoHeads(Bond):
     """Reshapes an input to have heads.
 
     Input shape: (batch_size, sequence_length, embed_dim) 
@@ -40,8 +40,8 @@ class AddHeads(Bond):
         B, T, D = x.shape
         return jnp.reshape(x, (B, T, self.num_heads, D // self.num_heads)).transpose(0, 2, 1, 3)
 
-class RemoveHeads(Bond):
-    """Inverse of AddHeads."""
+class MergeHeads(Bond):
+    """Inverse of SplitIntoHeads."""
     def __init__(self):
         super().__init__()
         self.smooth = True
@@ -86,7 +86,7 @@ class Softmax(Bond):
     def forward(self, x, w):
         return jax.nn.softmax(self.sensitivity * x, axis=-1)
 
-class AttentionOutput(Bond):
+class ApplyAttentionScores(Bond):
     """Computes attention values from the scores."""
     def __init__(self):
         super().__init__()
