@@ -46,36 +46,6 @@ class Linear(Atom):
         return [d_weight]
 
 
-def sr_sinkhorn(g, steps=5):
-    """
-    Implementation of the Square-Root Sinkhorn algorithm,
-    Algorithm 3 in https://arxiv.org/abs/2502.06742v1
-    """
-    X = g
-    m, n = X.shape
-
-    for _ in range(steps):
-        # Row-wise normalization
-        row_norms = jnp.linalg.norm(X, axis=1, keepdims=True)  # [m, 1]
-        row_norms = jnp.clip(row_norms, a_min=1e-8)
-        X = n**0.5 * X / row_norms
-
-        # Column-wise normalization
-        col_norms = jnp.linalg.norm(X, axis=0, keepdims=True)  # [1, n]
-        col_norms = jnp.clip(col_norms, a_min=1e-8)
-        X = m**0.5 * X / col_norms
-
-    return X
-
-class SinkhornLinear(Linear):
-    def __init__(self, fanout, fanin):
-        super().__init__(fanout, fanin)
-        self.smooth = False
-
-    def dualize(self, grad_w, target_norm=1.0):
-        weight = sr_sinkhorn(grad_w[0]) * target_norm
-        return [weight]
-
 class Embed(Atom):
     def __init__(self, d_embed, num_embed):
         super().__init__()
