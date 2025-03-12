@@ -3,7 +3,8 @@ import jax.numpy as jnp
 
 from modula.abstract import Atom
 
-def orthogonalize(M):
+def _orthogonalize(M):
+    """Orthogonalize a single matrix."""
     a, b, c = 3.0, -3.2, 1.2
     transpose = M.shape[1] > M.shape[0]
     if transpose:
@@ -16,6 +17,13 @@ def orthogonalize(M):
     if transpose:
         M = M.T
     return M
+
+def orthogonalize(M):
+    """Batch orthogonalize tensors of shape [..., fanout, fanin]."""
+    matrix_shape = M.shape[-2:]
+    M_flattened = M.reshape((-1,) + matrix_shape)
+    M_orthogonalized = jax.vmap(_orthogonalize)(M_flattened)
+    return M_orthogonalized.reshape(M.shape)
 
 
 class Linear(Atom):
@@ -127,3 +135,27 @@ if __name__ == "__main__":
     error_O = jnp.linalg.norm(O - U @ Vh) / jnp.linalg.norm(U @ Vh)
     print(f"relative error in M's SVD: {error_M}")
     print(f"relative error in O: {error_O}")
+
+    # Test batched orthogonalization
+    batch, heads = 3, 4
+    batched_M = jax.random.normal(key, shape=(batch, heads, d0, d1))
+    batched_O = orthogonalize(batched_M)
+    
+    # Check shape preservation
+    assert batched_O.shape == batched_M.shape
+    print(f"Batched shape preserved: {batched_O.shape}")
+    
+    # Check orthogonality for each matrix in the batch
+    for b in range(batch):
+        for h in range(heads):
+            matrix = batched_O[b, h]
+            if matrix.shape[0] <= matrix.shape[1]:  # If tall matrix
+                ortho_check = matrix @ matrix.T
+                target = jnp.eye(matrix.shape[0])
+            else:  # If wide matrix
+                ortho_check = matrix.T @ matrix
+                target = jnp.eye(matrix.shape[1])
+            
+            error = jnp.linalg.norm(ortho_check - target) / jnp.linalg.norm(target)
+            if b == 0 and h == 0:  # Just print the first one as an example
+                print(f"Orthogonality error for batch 0, head 0: {error}")
