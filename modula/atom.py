@@ -54,6 +54,36 @@ class Linear(Atom):
         return [d_weight]
 
 
+class HeadedLinear(Linear):
+    """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
+    def __init__(self, num_heads, fanout, fanin):
+        super().__init__(fanout, fanin)
+        self.fanout = fanout
+        self.fanin = fanin
+        self.num_heads = num_heads
+    
+    def forward(self, x, w):
+        return jnp.einsum("...fanin, heads fanout fanin -> ...heads fanout", x, w[0])
+
+    def initialize(self, key):
+        weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
+        return self.project([weight])
+
+class HeadedAttentionOut(Linear):
+    """Rank-3 tensor version of W_out in attention with the proper einsum."""
+    def __init__(self, num_heads, fanout, fanin):
+        super().__init__(fanout, fanin)
+        self.num_heads = num_heads
+    
+    def forward(self, x, w):
+        v, scores = x
+        values = jnp.einsum("batch token_k heads d_embed, batch heads token_q token_k -> batch token_q heads d_embed", v, scores)
+        return jnp.einsum("batch token heads d_embed, heads fanout fanin -> batch token fanout", values, w[0])
+    
+    def initialize(self, key):
+        weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
+        return self.project([weight])
+
 def sr_sinkhorn(g, steps=5):
     """
     Implementation of the Square-Root Sinkhorn algorithm,
@@ -157,5 +187,6 @@ if __name__ == "__main__":
                 target = jnp.eye(matrix.shape[1])
             
             error = jnp.linalg.norm(ortho_check - target) / jnp.linalg.norm(target)
-            if b == 0 and h == 0:  # Just print the first one as an example
-                print(f"Orthogonality error for batch 0, head 0: {error}")
+            if error > 1e-2:
+                # the typical error is 2e-3
+                print(f"Orthogonality error for batch {b}, head {h}: {error}")

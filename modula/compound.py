@@ -32,3 +32,30 @@ def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mas
     out = final_scale * Linear(vocab_size, d_embed)
 
     return out @ blocks @ embed
+
+def OrthogonalAttention(num_heads, d_embed, softmax_scale, causal):
+    """
+    Orthogonal attention uses 3-tensors for Q, K, V to make the input and output dimensions explicitly equal.
+    """
+    Q = TransposeHeads() @ HeadedLinear(num_heads, d_embed, d_embed)
+    K = TransposeHeads() @ HeadedLinear(num_heads, d_embed, d_embed)
+    V = TransposeHeads() @ HeadedLinear(num_heads, d_embed, d_embed)
+    W = HeadedAttentionOut(num_heads, d_embed, d_embed)
+
+    AttentionScores = Softmax(softmax_scale) @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
+    return (1/3) * W @ (V, AttentionScores)
+
+def OrthogonalGPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mass=5, attention_scale=1.0, final_scale=1.0):
+    embed = Embed(d_embed, vocab_size)
+    embed.tare()
+
+    att = OrthogonalAttention(num_heads, d_embed, d_query=d_embed, d_value=d_embed, attention_scale=attention_scale, causal=True)
+    mlp = Linear(d_embed, d_embed) @ GeLU() @ Linear(d_embed, d_embed)
+    att_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * att
+    mlp_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * mlp
+    blocks = (mlp_block @ att_block) ** num_blocks
+    blocks.tare(absolute=blocks_mass)
+
+    out = final_scale * Linear(vocab_size, d_embed)
+
+    return out @ blocks @ embed

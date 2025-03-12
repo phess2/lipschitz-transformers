@@ -40,6 +40,13 @@ class SplitIntoHeads(Bond):
         B, T, D = x.shape
         return jnp.reshape(x, (B, T, self.num_heads, D // self.num_heads)).transpose(0, 2, 1, 3)
 
+class TransposeHeads(SplitIntoHeads):
+    def __init__(self):
+        super().__init__(num_heads=None)
+    
+    def forward(self, x, w):
+        return x.transpose(0, 2, 1, 3)
+
 class MergeHeads(Bond):
     """Inverse of SplitIntoHeads."""
     def __init__(self):
