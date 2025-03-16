@@ -27,8 +27,8 @@ def orthogonalize(M):
 
 
 class Linear(Atom):
-    def __init__(self, fanout, fanin):
-        super().__init__()
+    def __init__(self, fanout, fanin, tracker=None):
+        super().__init__(tracker)
         self.fanin  = fanin
         self.fanout = fanout
         self.smooth = True
@@ -41,6 +41,8 @@ class Linear(Atom):
         return x @ weights.transpose()  # shape is [..., fanout]
 
     def initialize(self, key):
+        if self.tracker is not None:
+            self.log_info = {}
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
         return self.project([weight])
 
@@ -52,12 +54,23 @@ class Linear(Atom):
     def dualize(self, grad_w, target_norm=1.0):
         d_weight = self.project(grad_w)[0] * target_norm
         return [d_weight]
+    
+    def log(self, w, grad_w):
+        if self.tracker is None:
+            return {}
+        
+        if "weight_norm" not in self.log_info:
+            self.log_info["weight_norm"] = []
+
+        self.log_info["weight_norm"].append(jnp.linalg.norm(w[0], ord=2))
+
+        return {self.tracker: self.log_info}
 
 
 class HeadedLinear(Linear):
     """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
-    def __init__(self, num_heads, fanout, fanin):
-        super().__init__(fanout, fanin)
+    def __init__(self, num_heads, fanout, fanin, tracker=None):
+        super().__init__(fanout, fanin, tracker)
         self.fanout = fanout
         self.fanin = fanin
         self.num_heads = num_heads
@@ -68,11 +81,14 @@ class HeadedLinear(Linear):
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
         return self.project([weight])
+    
+    def log(self, w, grad_w):
+        return {}
 
 class HeadedAttentionOut(Linear):
     """Rank-3 tensor version of W_out in attention with the proper einsum."""
-    def __init__(self, num_heads, fanout, fanin):
-        super().__init__(fanout, fanin)
+    def __init__(self, num_heads, fanout, fanin, tracker=None):
+        super().__init__(fanout, fanin, tracker)
         self.num_heads = num_heads
     
     def forward(self, x, w):
@@ -83,6 +99,9 @@ class HeadedAttentionOut(Linear):
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
         return self.project([weight])
+    
+    def log(self, w, grad_w):
+        return {}
 
 def sr_sinkhorn(g, steps=5):
     """
@@ -106,8 +125,8 @@ def sr_sinkhorn(g, steps=5):
     return X
 
 class SinkhornLinear(Linear):
-    def __init__(self, fanout, fanin):
-        super().__init__(fanout, fanin)
+    def __init__(self, fanout, fanin, tracker=None):
+        super().__init__(fanout, fanin, tracker)
         self.smooth = False
 
     def dualize(self, grad_w, target_norm=1.0):
@@ -115,8 +134,8 @@ class SinkhornLinear(Linear):
         return [weight]
 
 class Embed(Atom):
-    def __init__(self, d_embed, num_embed):
-        super().__init__()
+    def __init__(self, d_embed, num_embed, tracker=None):
+        super().__init__(tracker)
         self.num_embed = num_embed
         self.d_embed = d_embed
         self.smooth = True
@@ -141,6 +160,9 @@ class Embed(Atom):
         d_weight = self.project(grad_w)[0] * target_norm
         d_weight = jnp.nan_to_num(d_weight)
         return [d_weight]
+    
+    def log(self, w, grad_w):
+        return {}
 
 
 if __name__ == "__main__":

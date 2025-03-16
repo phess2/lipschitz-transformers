@@ -2,8 +2,10 @@ import jax
 import copy
 
 class Module:
-    def __init__(self):
+    def __init__(self, tracker=None):
         self.children = []
+        self.log_info = {}
+        self.tracker = tracker      # optional tracker label
 
         self.atoms = None           # number of atoms: int
         self.bonds = None           # number of bonds: int
@@ -47,6 +49,10 @@ class Module:
     def dualize(self, grad_w, target_norm):
         # Weight gradient list and number --> normalized weight gradient list
         raise NotImplementedError
+    
+    def log(self, w, grad_w):
+        # Measure and return observables -- mutates self.log_info
+        raise NotImplementedError
 
     def __matmul__(self, other):
         if isinstance(other, tuple):
@@ -71,8 +77,8 @@ class Module:
         return self.forward(x, w)
 
 class Atom(Module):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, tracker=None):
+        super().__init__(tracker)
         self.atoms = 1
         self.bonds = 0
 
@@ -91,6 +97,9 @@ class Bond(Module):
 
     def dualize(self, grad_w, target_norm=1.0):
         return []
+    
+    def log(self, w, grad_w):
+        return {}
 
 class CompositeModule(Module):
     def __init__(self, m1, m0):
@@ -132,6 +141,14 @@ class CompositeModule(Module):
         else:
             d_w = [0 * grad_weight for grad_weight in grad_w]
         return d_w
+    
+    def log(self, w, grad_w):
+        m0, m1 = self.children
+        w0 = w[:m0.atoms]
+        w1 = w[m0.atoms:]
+        grad_w0 = grad_w[:m0.atoms]
+        grad_w1 = grad_w[m0.atoms:]
+        return m0.log(w0, grad_w0) | m1.log(w1, grad_w1)
 
 class TupleModule(Module):
     def __init__(self, python_tuple_of_modules):
@@ -177,6 +194,14 @@ class TupleModule(Module):
         else:
             d_w = [0 * grad_weight for grad_weight in grad_w]
         return d_w
+    
+    def log(self, w, grad_w):
+        log_info = {}
+        for m in self.children:
+            log_info |= m.log(w, grad_w)
+            w = w[m.atoms:]
+            grad_w = grad_w[m.atoms:]
+        return log_info
 
 class Identity(Bond):
     def __init__(self):
