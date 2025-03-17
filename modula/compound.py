@@ -8,7 +8,7 @@ def MLP(output_dim, input_dim, width, depth):
         m = m @ Linear(width, width) @ ReLU()
     return m @ Linear(width, input_dim)
 
-def Attention(num_heads, d_embed, d_query, d_value, attention_scale, layer_idx=0):
+def Attention(num_heads, d_embed, d_query, d_value, layer_idx=0):
     """Multi-head attention"""
 
     Q = SplitIntoHeads(num_heads) @ Linear(num_heads * d_query, d_embed, tracker=f"q{layer_idx}")
@@ -16,16 +16,16 @@ def Attention(num_heads, d_embed, d_query, d_value, attention_scale, layer_idx=0
     V = SplitIntoHeads(num_heads) @ Linear(num_heads * d_value, d_embed, tracker=f"v{layer_idx}")
     W = Linear(d_embed, num_heads * d_value, tracker=f"w{layer_idx}") @ MergeHeads()
 
-    AttentionScores = Softmax(attention_scale) @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
+    AttentionScores = Softmax() @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
     return W @ (1/3 * ApplyAttentionScores()) @ (V, AttentionScores)
 
-def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mass=5, attention_scale=1.0, final_scale=1.0):
+def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mass=5):
     embed = Embed(d_embed, vocab_size)
     embed.tare()
 
     blocks = Identity()
     for i in range(num_blocks):
-        att = Attention(num_heads, d_embed, d_query, d_value, attention_scale, layer_idx=i)
+        att = Attention(num_heads, d_embed, d_query, d_value, layer_idx=i)
         mlp = Linear(d_embed, 4*d_embed, tracker=f"mlp_out{i}") @ GeLU() @ Linear(4*d_embed, d_embed, tracker=f"mlp_in{i}")
         att_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * att
         mlp_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * mlp
@@ -33,10 +33,10 @@ def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mas
 
     blocks.tare(absolute=blocks_mass)
 
-    out = final_scale * Linear(vocab_size, d_embed, tracker="mlp_final")
+    out = Linear(vocab_size, d_embed, tracker="mlp_final")
     return out @ blocks @ embed
 
-def OrthogonalAttention(num_heads, d_embed, softmax_scale, layer_idx=0):
+def OrthogonalAttention(num_heads, d_embed, layer_idx=0):
     """
     Orthogonal attention uses 3-tensors for Q, K, V to make the input and output dimensions explicitly equal.
     """
@@ -48,13 +48,13 @@ def OrthogonalAttention(num_heads, d_embed, softmax_scale, layer_idx=0):
     AttentionScores = Softmax() @ Scalar(tracker=f"softmax{layer_idx}") @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
     return ReduceHeads() @ ((1/3) * W) @ ApplyAttentionScores() @ (V, AttentionScores)
 
-def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, attention_scale=1.0, final_scale=1.0):
+def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5):
     embed = Embed(d_embed, vocab_size)
     embed.tare()
 
     blocks = Identity()
     for i in range(num_blocks):
-        att = OrthogonalAttention(num_heads, d_embed, attention_scale, layer_idx=i)
+        att = OrthogonalAttention(num_heads, d_embed, layer_idx=i)
         mlp = Linear(d_embed, d_embed, tracker=f"mlp_out{i}") @ GeLU() @ Linear(d_embed, d_embed, tracker=f"mlp_in{i}")
         att_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * att
         mlp_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * mlp
