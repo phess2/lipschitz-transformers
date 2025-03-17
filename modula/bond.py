@@ -58,6 +58,17 @@ class MergeHeads(Bond):
         B, num_heads, T, head_dim = x.shape
         return x.transpose(0, 2, 1, 3).reshape(B, T, num_heads * head_dim)
 
+class ReduceHeads(Bond):
+    """Sums over the head dimension."""
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+
+    def forward(self, x, w):
+        # x shape is [...heads, d_embed]
+        return x.sum(axis=-2)
+
 class AttentionQK(Bond):
     """Computes the query and key matrix multiplication in attention."""
     def __init__(self):
