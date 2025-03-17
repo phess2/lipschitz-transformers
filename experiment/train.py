@@ -76,37 +76,29 @@ def train(args):
         d_w = model.dualize(d_w) if args.post_dualize else d_w
         wd_factor = 1 - args.wd * lr_schedule(step)
         w = [wd_factor * weight - lr_schedule(step) * d_weight for weight, d_weight in zip(w, d_w)]
-        # w = model.project(w)
-        losses.append(loss)
+        if args.project:
+            w = model.project(w)
+        losses.append(float(loss))
 
         if step % log_interval == 0:
             print(f"Step {step}: loss {loss}")
             log = model.log(w, grad_w)
         
         if step % val_interval == 0:
-            val_losses = []
+            val_losses_to_avg = []
             for val_inputs, val_targets in val_loader:
                 loss, _ = loss_and_grad(w, val_inputs, val_targets)
-                val_losses.append(loss)
-                if len(val_losses) >= val_iters:
+                val_losses_to_avg.append(float(loss))
+                if len(val_losses_to_avg) >= val_iters:
                     break
-            val_loss = sum(val_losses)/len(val_losses)
+            val_loss = sum(val_losses_to_avg)/len(val_losses_to_avg)
             print(f"--> val loss {val_loss}")
-            val_losses.append(val_loss)
+            val_losses.append(float(val_loss))
         step += 1
 
         if step >= args.steps:
             break
     
-    # one big val set test at the end
-    val_losses = []
-    for val_inputs, val_targets in val_loader:
-        loss, _ = loss_and_grad(w, val_inputs, val_targets)
-        val_losses.append(loss)
-        if len(val_losses) >= val_iters * 10:
-            break
-    print(f"--> val loss over {val_iters * 10} batches: {sum(val_losses)/len(val_losses)}")
-
     log["losses"] = losses
     log["val_losses"] = val_losses
     return log
@@ -117,13 +109,23 @@ def save_results(results, args):
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename = f"embed{args.d_embed}_lr{args.lr:.4f}_{args.optimizer}_steps{args.steps}_{timestamp}.json"
 
-    print(vars(args))
     output = {
         'parameters': vars(args),
         'results': results,
         'code': code
     }
 
+    def jax_to_numpy(d):
+        if isinstance(d, dict):
+            return {k: jax_to_numpy(v) for k, v in d.items()}
+        elif isinstance(d, list):
+            return [jax_to_numpy(v) for v in d]
+        elif isinstance(d, jnp.ndarray):
+            return d.tolist()
+        else:
+            return d
+
+    output = jax_to_numpy(output)
     output_path = Path(args.output_dir) / filename
     with open(output_path, 'w') as f:
         json.dump(output, f, indent=2)

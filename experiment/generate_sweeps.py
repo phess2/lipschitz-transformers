@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 optimizer_pre_post_lr_wd = [
-    ("adam", False, False, np.logspace(-3, -1, 10), np.logspace(-3, -1, 3)),
+    ("adam", False, False, np.logspace(-4, -2, 10), np.logspace(-3, -1, 3)),
     ("muon", False, True, np.logspace(-2, 0, 10), np.logspace(-3, -1, 3)),
 ]
 d_embeds = [128]
