@@ -63,7 +63,6 @@ class Linear(Atom):
             self.log_info["weight_norm"] = []
 
         self.log_info["weight_norm"].append(jnp.linalg.norm(w[0], ord=2))
-
         return {self.tracker: self.log_info}
 
 
@@ -96,7 +95,6 @@ class HeadedLinear(Linear):
 
         max_norm = max([jnp.linalg.norm(w[0][i], ord=2) for i in range(self.num_heads)])
         self.log_info["weight_norm"].append(max_norm * self.num_heads)
-
         return {self.tracker: self.log_info}
 
 class HeadedLinearOut(HeadedLinear):
@@ -172,9 +170,36 @@ class Embed(Atom):
     def log(self, w, grad_w):
         return {}
 
+class Scalar(Atom):
+    def __init__(self, tracker=None):
+        super().__init__(tracker)
+        self.smooth = True
+        self.mass = 1
+        self.sensitivity = 1
+        
+    def forward(self, x, w):
+        return x * w[0]
+    
+    def initialize(self, key):
+        return [jnp.ones(1)]
+    
+    def project(self, w):
+        return [w[0]]
+    
+    def dualize(self, grad_w, target_norm=1.0):
+        return [grad_w[0] * target_norm]
+    
+    def log(self, w, grad_w):
+        if self.tracker is None:
+            return {}
+        
+        if "scalar" not in self.log_info:
+            self.log_info["scalar"] = []
+
+        self.log_info["scalar"].append(w[0])
+        return {self.tracker: self.log_info}
 
 if __name__ == "__main__":
-
     key = jax.random.PRNGKey(0)
 
     # sample a random d0xd1 matrix

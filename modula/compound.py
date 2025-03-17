@@ -45,7 +45,7 @@ def OrthogonalAttention(num_heads, d_embed, softmax_scale, layer_idx=0):
     V = TransposeHeads() @ HeadedLinear(num_heads, d_embed, d_embed, tracker=f"v{layer_idx}")
     W = HeadedLinearOut(num_heads, d_embed, d_embed, tracker=f"w{layer_idx}") @ TransposeHeads()
 
-    AttentionScores = Softmax(softmax_scale) @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
+    AttentionScores = Softmax() @ Scalar(tracker=f"softmax{layer_idx}") @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
     return ReduceHeads() @ ((1/3) * W) @ ApplyAttentionScores() @ (V, AttentionScores)
 
 def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, attention_scale=1.0, final_scale=1.0):
@@ -62,6 +62,6 @@ def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, att
     
     blocks.tare(absolute=blocks_mass)
 
-    out = final_scale * Linear(vocab_size, d_embed, tracker="mlp_final")
+    out = Scalar(tracker="final_scale") @ Linear(vocab_size, d_embed, tracker="mlp_final")
 
     return out @ blocks @ embed

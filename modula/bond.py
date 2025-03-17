@@ -92,17 +92,18 @@ class CausalMask(Bond):
     def forward(self, x, w):
         scores = x
         mask = jnp.tril(jnp.ones(scores.shape[-2:], dtype=bool))
-        return jnp.where(mask, scores, -jnp.inf)
+        min_finite_val = jnp.finfo(scores.dtype).min
+        return jnp.where(mask, scores, min_finite_val)
 
 class Softmax(Bond):
-    """Softmax with a sharpness parameter."""
-    def __init__(self, scale):
+    """Softmax along the last dimension."""
+    def __init__(self):
         super().__init__()
         self.smooth = True
-        self.sensitivity = scale
+        self.sensitivity = 1
     
     def forward(self, x, w):
-        return jax.nn.softmax(self.sensitivity * x, axis=-1)
+        return jax.nn.softmax(x, axis=-1)
 
 class ApplyAttentionScores(Bond):
     """Computes attention values from the scores."""
