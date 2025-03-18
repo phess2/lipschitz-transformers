@@ -51,9 +51,29 @@ class Linear(Atom):
         weight = orthogonalize(weight) * jnp.sqrt(self.fanout / self.fanin)
         return [weight]
 
-    def dualize(self, grad_w, target_norm=1.0):
-        d_weight = self.project(grad_w)[0] * target_norm
-        return [d_weight]
+    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
+        if not manifold:
+            d_weight = self.project(grad_w)[0] * target_norm
+            return [d_weight]
+        
+        # To optimize on the Stiefel manifold, we'll follow
+        # https://docs.modula.systems/algorithms/manifold/orthogonal/
+
+        assert self.fanout == self.fanin, "Stiefel manifold optimization doesn't work for rectangular matrices (yet!)"
+        assert w is not None, "Stiefel manifold optimization requires a weight matrix"
+
+        grad, w = grad_w[0], w[0]
+        X = w.T @ grad - grad.T @ w
+        X = self.project([X])[0]
+        return [X]
+    
+    def step(self, w, d_w, lr, manifold=False):
+        w, d_w = w[0], d_w[0]
+        if not manifold:
+            return [w - lr * d_w]
+        
+        # See: https://docs.modula.systems/algorithms/manifold/orthogonal/
+        return w @ (jnp.eye(self.fanout) - lr * d_w) / (1 + lr**2)**0.5
     
     def log(self, w, grad_w):
         if self.tracker is None:
@@ -135,7 +155,7 @@ class SinkhornLinear(Linear):
         super().__init__(fanout, fanin, tracker)
         self.smooth = False
 
-    def dualize(self, grad_w, target_norm=1.0):
+    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
         weight = sr_sinkhorn(grad_w[0]) * target_norm
         return [weight]
 
@@ -162,7 +182,7 @@ class Embed(Atom):
         weight = weight / jnp.linalg.norm(weight, axis=0, keepdims=True) * jnp.sqrt(self.d_embed)
         return [weight]
 
-    def dualize(self, grad_w, target_norm=1.0):
+    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
         d_weight = self.project(grad_w)[0] * target_norm
         d_weight = jnp.nan_to_num(d_weight)
         return [d_weight]
@@ -184,10 +204,11 @@ class Scalar(Atom):
         return [jnp.ones(1)]
     
     def project(self, w):
-        return [w[0]]
+        return [jnp.sign(w[0])]
     
-    def dualize(self, grad_w, target_norm=1.0):
-        return [grad_w[0] * target_norm]
+    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
+        d_weight = self.project(grad_w)[0] * target_norm
+        return [d_weight]
     
     def log(self, w, grad_w):
         if self.tracker is None:

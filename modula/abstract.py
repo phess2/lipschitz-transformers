@@ -46,8 +46,12 @@ class Module:
         # Return a weight list.
         raise NotImplementedError
 
-    def dualize(self, grad_w, target_norm):
-        # Weight gradient list and number --> normalized weight gradient list
+    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
+        # Weight gradient list, weight list, and number --> dualized weight gradient list
+        raise NotImplementedError
+    
+    def step(self, w, d_w, lr, manifold=False):
+        # Weight list, update list, learning rate --> updated weight list
         raise NotImplementedError
     
     def log(self, w, grad_w):
@@ -81,6 +85,9 @@ class Atom(Module):
         super().__init__(tracker)
         self.atoms = 1
         self.bonds = 0
+    
+    def step(self, w, d_w, lr, manifold=False):
+        return [w[0] - lr * d_w[0]]
 
 class Bond(Module):
     def __init__(self):
@@ -95,7 +102,10 @@ class Bond(Module):
     def project(self, w):
         return []
 
-    def dualize(self, grad_w, target_norm=1.0):
+    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
+        return []
+    
+    def step(self, w, d_w, lr, manifold=False):
         return []
     
     def log(self, w, grad_w):
@@ -131,17 +141,28 @@ class CompositeModule(Module):
         w1 = w[m0.atoms:]
         return m0.project(w0) + m1.project(w1)
 
-    def dualize(self, grad_w, target_norm=1.0):
+    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
         if self.mass > 0:
             m0, m1 = self.children
             grad_w0, grad_w1 = grad_w[:m0.atoms], grad_w[m0.atoms:]
-            d_w0 = m0.dualize(grad_w0, target_norm = target_norm * m0.mass / self.mass / m1.sensitivity)
-            d_w1 = m1.dualize(grad_w1, target_norm = target_norm * m1.mass / self.mass)
+            w0, w1 = w[:m0.atoms], w[m0.atoms:]
+            d_w0 = m0.dualize(grad_w0, w0, manifold, target_norm = target_norm * m0.mass / self.mass / m1.sensitivity)
+            d_w1 = m1.dualize(grad_w1, w1, manifold, target_norm = target_norm * m1.mass / self.mass)
             d_w = d_w0 + d_w1
         else:
             d_w = [0 * grad_weight for grad_weight in grad_w]
         return d_w
     
+    def step(self, w, d_w, lr, manifold=False):
+        if self.mass == 0:
+            return w
+        m0, m1 = self.children
+        w0, w1 = w[:m0.atoms], w[m0.atoms:]
+        d_w0, d_w1 = d_w[:m0.atoms], d_w[m0.atoms:]
+        step0 = m0.step(w0, d_w0, lr, manifold)
+        step1 = m1.step(w1, d_w1, lr, manifold)
+        return step0 + step1
+
     def log(self, w, grad_w):
         m0, m1 = self.children
         w0 = w[:m0.atoms]
@@ -183,17 +204,32 @@ class TupleModule(Module):
             w = w[m.atoms:]
         return projected_w
 
-    def dualize(self, grad_w, target_norm=1.0):
+    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
         if self.mass > 0:
             d_w = []
             for m in self.children:
                 grad_w_m = grad_w[:m.atoms]
-                d_w_m = m.dualize(grad_w_m, target_norm = target_norm * m.mass / self.mass)
+                w_m = w[:m.atoms]
+                d_w_m = m.dualize(grad_w_m, w_m, manifold, target_norm = target_norm * m.mass / self.mass)
                 d_w += d_w_m
                 grad_w = grad_w[m.atoms:]
+                w = w[m.atoms:]
         else:
             d_w = [0 * grad_weight for grad_weight in grad_w]
         return d_w
+    
+    def step(self, w, d_w, lr, manifold=False):
+        if self.mass == 0:
+            return w
+        steps = []
+        for m in self.children:
+            w_m = w[:m.atoms]
+            d_w_m = d_w[:m.atoms]
+            step_m = m.step(w_m, d_w_m, lr, manifold)
+            steps += step_m
+            w = w[m.atoms:]
+            d_w = d_w[m.atoms:]
+        return steps
     
     def log(self, w, grad_w):
         log_info = {}
