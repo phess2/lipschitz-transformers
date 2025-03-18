@@ -55,7 +55,7 @@ def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5):
     blocks = Identity()
     for i in range(num_blocks):
         att = OrthogonalAttention(num_heads, d_embed, layer_idx=i)
-        mlp = Linear(d_embed, d_embed, tracker=f"mlp_out{i}") @ GeLU() @ Linear(d_embed, d_embed, tracker=f"mlp_in{i}")
+        mlp = ManifoldLinear(d_embed, d_embed, tracker=f"mlp_out{i}") @ GeLU() @ ManifoldLinear(d_embed, d_embed, tracker=f"mlp_in{i}")
         att_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * att
         mlp_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * mlp
         blocks @= mlp_block @ att_block

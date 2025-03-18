@@ -51,29 +51,9 @@ class Linear(Atom):
         weight = orthogonalize(weight) * jnp.sqrt(self.fanout / self.fanin)
         return [weight]
 
-    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
-        if not manifold:
-            d_weight = self.project(grad_w)[0] * target_norm
-            return [d_weight]
-        
-        # To optimize on the Stiefel manifold, we'll follow
-        # https://docs.modula.systems/algorithms/manifold/orthogonal/
-
-        assert self.fanout == self.fanin, "Stiefel manifold optimization doesn't work for rectangular matrices (yet!)"
-        assert w is not None, "Stiefel manifold optimization requires a weight matrix"
-
-        grad, w = grad_w[0], w[0]
-        X = w.T @ grad - grad.T @ w
-        X = self.project([X])[0]
-        return [X]
-    
-    def step(self, w, d_w, lr, manifold=False):
-        w, d_w = w[0], d_w[0]
-        if not manifold:
-            return [w - lr * d_w]
-        
-        # See: https://docs.modula.systems/algorithms/manifold/orthogonal/
-        return w @ (jnp.eye(self.fanout) - lr * d_w) / (1 + lr**2)**0.5
+    def dualize(self, grad_w, w=None, target_norm=1.0):
+        d_weight = self.project(grad_w)[0] * target_norm
+        return [d_weight]
     
     def log(self, w, grad_w):
         if self.tracker is None:
@@ -86,12 +66,31 @@ class Linear(Atom):
         return {self.tracker: self.log_info}
 
 
-class HeadedLinear(Linear):
+class ManifoldLinear(Linear):
+    def __init__(self, fanout, fanin, tracker=None):
+        super().__init__(fanout, fanin, tracker)
+        
+    def dualize(self, grad_w, w=None, target_norm=1.0):
+        # To optimize on the Stiefel manifold, we'll follow
+        # https://docs.modula.systems/algorithms/manifold/orthogonal/
+
+        assert self.fanout == self.fanin, "Stiefel manifold optimization doesn't work for rectangular matrices (yet!)"
+        assert w is not None, "Stiefel manifold optimization requires a weight matrix"
+
+        grad, w = grad_w[0], w[0]
+        X = w.mT @ grad - grad.mT @ w
+        X = self.project([X])[0]
+        return [X]
+    
+    def step(self, w, d_w, lr):
+        # See: https://docs.modula.systems/algorithms/manifold/orthogonal/
+        return [w[0] @ (jnp.eye(self.fanout) - lr * d_w[0]) / (1 + lr**2)**0.5]
+
+
+class HeadedLinear(ManifoldLinear):
     """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
     def __init__(self, num_heads, fanout, fanin, tracker=None):
         super().__init__(fanout, fanin, tracker)
-        self.fanout = fanout
-        self.fanin = fanin
         self.num_heads = num_heads
     
     def forward(self, x, w):
@@ -155,7 +154,7 @@ class SinkhornLinear(Linear):
         super().__init__(fanout, fanin, tracker)
         self.smooth = False
 
-    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
+    def dualize(self, grad_w, w=None, target_norm=1.0):
         weight = sr_sinkhorn(grad_w[0]) * target_norm
         return [weight]
 
@@ -182,7 +181,7 @@ class Embed(Atom):
         weight = weight / jnp.linalg.norm(weight, axis=0, keepdims=True) * jnp.sqrt(self.d_embed)
         return [weight]
 
-    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
+    def dualize(self, grad_w, w=None, target_norm=1.0):
         d_weight = self.project(grad_w)[0] * target_norm
         d_weight = jnp.nan_to_num(d_weight)
         return [d_weight]
@@ -206,7 +205,7 @@ class Scalar(Atom):
     def project(self, w):
         return [jnp.sign(w[0])]
     
-    def dualize(self, grad_w, w=None, manifold=False, target_norm=1.0):
+    def dualize(self, grad_w, w=None, target_norm=1.0):
         d_weight = self.project(grad_w)[0] * target_norm
         return [d_weight]
     

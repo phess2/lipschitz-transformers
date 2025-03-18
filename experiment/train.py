@@ -71,7 +71,7 @@ def train(args):
         if args.manifold:
             # Stiefel manifold optimization uses simple momentum
             buf1 = [args.beta1 * m + (1-args.beta1) * grad_w for m, grad_w in zip(buf1, grad_w)]
-            d_w = model.dualize(buf1, w, args.manifold)
+            d_w = model.dualize(buf1, w)
         else:
             # pre_dualize, update first moment, update second moment, possibly apply adam, post_dualize
             d_m = model.dualize(grad_w) if args.pre_dualize else grad_w
@@ -80,7 +80,7 @@ def train(args):
             d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
             d_w = model.dualize(d_w) if args.post_dualize else d_w
             w = [(1 - args.wd * lr_schedule(step)) * weight for weight in w]
-        w = model.step(w, d_w, lr_schedule(step), args.manifold)
+        w = model.step(w, d_w, lr_schedule(step))
         if args.project:
             w = model.project(w)
         losses.append(float(loss))
