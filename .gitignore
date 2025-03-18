@@ -11,3 +11,9 @@ docs/source/examples/assets/
 examples/.ipynb_checkpoints/
 examples/data/*
 !examples/data/*.py
+
+experiment/data
+experiment/logs
+experiment/*.png
+experiment/result*
+experiment/sweep_configs
