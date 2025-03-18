@@ -2,8 +2,8 @@
 #SBATCH --job-name=manifold
 #SBATCH --output=/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/logs/sweep_%A_%a.out
 #SBATCH --error=/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/logs/sweep_%A_%a.err
-#SBATCH --array=0-59     # <<< set this to the number of parameter combinations from generate_sweeps.py
-#SBATCH --gres=gpu:1     # Request 1 GPU per task
+#SBATCH --array=0-0        # <<< set this to the number of parameter combinations from generate_sweeps.py
+#SBATCH --gres=gpu:1       # Request 1 GPU per task
 #SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],sitzmann-4090-1,oliva-titanrtx-[1,3],freeman-titanrtx-[1-2],agrawal-v100-1,agrawal-2080ti-1,freeman-v100-[1-2],isola-titanrtx-1,isola-ada6000-1
 #SBATCH --cpus-per-task=4
 #SBATCH --ntasks=1
@@ -39,6 +39,7 @@ with open('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/
         f'--beta2 {params[$i][\"beta2\"]} '
         f'--batch_size {params[$i][\"batch_size\"]} '
         f'--project {params[$i][\"project\"]} '
+        f'--manifold {params[$i][\"manifold\"]} '
         f'--steps {params[$i][\"steps\"]} '
         f'--output-dir {params[$i][\"output_dir\"]}'
     )

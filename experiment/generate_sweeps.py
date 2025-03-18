@@ -3,12 +3,21 @@ import json
 from pathlib import Path
 
 optimizer_pre_post_lr_wd = [
-    ("adam", False, False, np.logspace(-4, -2, 10), np.logspace(-3, -1, 3)),
-    ("muon", False, True, np.logspace(-2, 0, 10), np.logspace(-3, -1, 3)),
+    #("adam", False, False, np.logspace(-3.25, -2, 8), [0.01]),  # Adam
+    #("adam", False, True,  np.logspace(-2.5, -0.5, 8), [0.01]),
+    #("adam", True, False,  np.logspace(-3, -1, 8), [0.01]),
+    #("adam", True, True,   np.logspace(-2.5, -0.5, 8), [0.01]),
+    #("muon", False, False, np.logspace(-2, 0, 8), [0.01]),  # SGD
+    #("muon", False, True,  np.logspace(-1, 0.5, 8), [0.01]),  # Muon
+    #("muon", True, False,  np.logspace(-0.5, 1.5, 8), [0.01]),
+    ("muon", False, True,  np.logspace(-2, 0, 8), [0.01]),
+    #("muon", True, True,   np.logspace(-1, 0.5, 8), [0.01]),
 ]
+#d_embeds = [64, 128, 256, 512]
 d_embeds = [128]
 num_heads = [4]
-project = False
+project = [False]
+manifold = True
 
 blocks = 4
 seq_len = 256
@@ -17,38 +26,38 @@ batch_size = 64
 steps = 2001
 beta1 = 0.95
 beta2 = 0.99
-pre_dualize = False
-post_dualize = True
 
 seeds = [0]
 output_dir = "results"
 
 # Create all combinations
 combinations = []
-for optimizer, pre_dualize, post_dualize, lrs, wds in optimizer_pre_post_lr_wd:
+for optimizer, pre, post, lrs, wds in optimizer_pre_post_lr_wd:
     for lr in lrs:
         for wd in wds:
             for d_embed in d_embeds:
                 for nheads in num_heads:
-                    for seed in seeds:
-                        combinations.append({
-                            'd_embed': d_embed,
-                            'lr': lr,
-                            'wd': wd,
-                            'blocks': blocks,
-                            'seq_len': seq_len,
-                            'num_heads': nheads,
-                            'optimizer': optimizer,
-                            'pre_dualize': pre_dualize,
-                            'post_dualize': post_dualize,
-                            'beta1': beta1,
-                            'beta2': beta2,
-                            'batch_size': batch_size,
-                            'project': project,
-                            'steps': steps,
-                            'seed': seed,
-                            'output_dir': output_dir,
-                        })
+                    for proj in project:
+                        for seed in seeds:
+                            combinations.append({
+                                'd_embed': d_embed,
+                                'lr': lr,
+                                'wd': wd,
+                                'blocks': blocks,
+                                'seq_len': seq_len,
+                                'num_heads': nheads,
+                                'optimizer': optimizer,
+                                'pre_dualize': pre,
+                                'post_dualize': post,
+                                'beta1': beta1,
+                                'beta2': beta2,
+                                'batch_size': batch_size,
+                                'project': proj,
+                                'manifold': manifold,
+                                'steps': steps,
+                                'seed': seed,
+                                'output_dir': output_dir,
+                            })
 
 # Save combinations to file
 path = Path('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/sweep_configs')

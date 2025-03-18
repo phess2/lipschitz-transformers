@@ -68,14 +68,19 @@ def train(args):
     lr_schedule = lambda step: args.lr * (args.steps - step) / args.steps
     for inputs, targets in train_loader:
         loss, grad_w = loss_and_grad(w, inputs, targets)
-        # pre_dualize, update first moment, update second moment, possibly apply adam, post_dualize
-        d_m = model.dualize(grad_w) if args.pre_dualize else grad_w
-        buf1 = [args.beta1 * m + (1-args.beta1) * d_m    for m, d_m in zip(buf1, d_m)]
-        buf2 = [args.beta2 * m + (1-args.beta2) * d_m**2 for m, d_m in zip(buf2, d_m)]
-        d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
-        d_w = model.dualize(d_w) if args.post_dualize else d_w
-        wd_factor = 1 - args.wd * lr_schedule(step)
-        w = [wd_factor * weight - lr_schedule(step) * d_weight for weight, d_weight in zip(w, d_w)]
+        if args.manifold:
+            # Stiefel manifold optimization uses simple momentum
+            buf1 = [args.beta1 * m + (1-args.beta1) * grad_w for m, grad_w in zip(buf1, grad_w)]
+            d_w = model.dualize(buf1, w, args.manifold)
+        else:
+            # pre_dualize, update first moment, update second moment, possibly apply adam, post_dualize
+            d_m = model.dualize(grad_w) if args.pre_dualize else grad_w
+            buf1 = [args.beta1 * m + (1-args.beta1) * d_m    for m, d_m in zip(buf1, d_m)]
+            buf2 = [args.beta2 * m + (1-args.beta2) * d_m**2 for m, d_m in zip(buf2, d_m)]
+            d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
+            d_w = model.dualize(d_w) if args.post_dualize else d_w
+            w = [(1 - args.wd * lr_schedule(step)) * weight for weight in w]
+        w = model.step(w, d_w, lr_schedule(step), args.manifold)
         if args.project:
             w = model.project(w)
         losses.append(float(loss))
@@ -107,7 +112,13 @@ def save_results(results, args):
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    filename = f"embed{args.d_embed}_lr{args.lr:.4f}_{args.optimizer}_steps{args.steps}_{timestamp}.json"
+    filename = (
+        f"embed{args.d_embed}_lr{args.lr:.4f}_{args.optimizer}_"
+        f"pre{args.pre_dualize}_post{args.post_dualize}_"
+        f"project{args.project}_manifold{args.manifold}_"
+        f"wd{args.wd:.4f}_steps{args.steps}_"
+        f"{timestamp}.json"
+    )
 
     output = {
         'parameters': vars(args),
@@ -147,6 +158,7 @@ def main():
     parser.add_argument("--beta2", type=float, default=0.99, help="Momentum buffer 2 coefficient")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--project", type=lambda x: x.lower() == "true", default=True, help="Whether to project the weights")
+    parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=True, help="Whether to constrain to the manifold directly")
     parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--output-dir", type=str, default="results", help="Output directory")
