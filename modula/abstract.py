@@ -145,7 +145,8 @@ class CompositeModule(Module):
         if self.mass > 0:
             m0, m1 = self.children
             grad_w0, grad_w1 = grad_w[:m0.atoms], grad_w[m0.atoms:]
-            w0, w1 = w[:m0.atoms], w[m0.atoms:]
+            w0 = w[:m0.atoms] if w is not None else None
+            w1 = w[m0.atoms:] if w is not None else None
             d_w0 = m0.dualize(grad_w0, w0, target_norm = target_norm * m0.mass / self.mass / m1.sensitivity)
             d_w1 = m1.dualize(grad_w1, w1, target_norm = target_norm * m1.mass / self.mass)
             d_w = d_w0 + d_w1
@@ -209,11 +210,11 @@ class TupleModule(Module):
             d_w = []
             for m in self.children:
                 grad_w_m = grad_w[:m.atoms]
-                w_m = w[:m.atoms]
+                w_m = w[:m.atoms] if w is not None else None
                 d_w_m = m.dualize(grad_w_m, w_m, target_norm = target_norm * m.mass / self.mass)
                 d_w += d_w_m
                 grad_w = grad_w[m.atoms:]
-                w = w[m.atoms:]
+                w = w[m.atoms:] if w is not None else None
         else:
             d_w = [0 * grad_weight for grad_weight in grad_w]
         return d_w

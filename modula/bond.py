@@ -105,6 +105,16 @@ class Softmax(Bond):
     def forward(self, x, w):
         return jax.nn.softmax(x, axis=-1)
 
+class Sigmoid(Bond):
+    """Applies sigmoid pointwise."""
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+    
+    def forward(self, x, w):
+        return jax.nn.sigmoid(x)
+
 class ApplyAttentionScores(Bond):
     """Computes attention values from the scores."""
     def __init__(self):

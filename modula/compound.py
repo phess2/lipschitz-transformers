@@ -36,7 +36,7 @@ def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mas
     out = Linear(vocab_size, d_embed, tracker="mlp_final")
     return out @ blocks @ embed
 
-def OrthogonalAttention(num_heads, d_embed, layer_idx=0):
+def OrthogonalAttention(num_heads, d_embed, softmax_scale, layer_idx=0):
     """
     Orthogonal attention uses 3-tensors for Q, K, V to make the input and output dimensions explicitly equal.
     """
@@ -45,16 +45,16 @@ def OrthogonalAttention(num_heads, d_embed, layer_idx=0):
     V = TransposeHeads() @ HeadedLinear(num_heads, d_embed, d_embed, tracker=f"v{layer_idx}")
     W = HeadedLinearOut(num_heads, d_embed, d_embed, tracker=f"w{layer_idx}") @ TransposeHeads()
 
-    AttentionScores = Softmax() @ Scalar(tracker=f"softmax{layer_idx}") @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
+    AttentionScores = Sigmoid() @ ExpScalar(scale=softmax_scale, tracker=f"softmax{layer_idx}") @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
     return ReduceHeads() @ ((1/3) * W) @ ApplyAttentionScores() @ (V, AttentionScores)
 
-def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5):
+def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, softmax_scale=1.0, final_scale=1.0):
     embed = Embed(d_embed, vocab_size)
     embed.tare()
 
     blocks = Identity()
     for i in range(num_blocks):
-        att = OrthogonalAttention(num_heads, d_embed, layer_idx=i)
+        att = OrthogonalAttention(num_heads, d_embed, softmax_scale, layer_idx=i)
         mlp = ManifoldLinear(d_embed, d_embed, tracker=f"mlp_out{i}") @ GeLU() @ ManifoldLinear(d_embed, d_embed, tracker=f"mlp_in{i}")
         att_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * att
         mlp_block = (1-1/(2*num_blocks)) * Identity() + 1/(2*num_blocks) * mlp
@@ -62,6 +62,6 @@ def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5):
     
     blocks.tare(absolute=blocks_mass)
 
-    out = Scalar(tracker="final_scale") @ Linear(vocab_size, d_embed, tracker="mlp_final")
+    out = ExpScalar(scale=final_scale, tracker="final_scale") @ Linear(vocab_size, d_embed, tracker="mlp_final")
 
     return out @ blocks @ embed
