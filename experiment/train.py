@@ -40,6 +40,8 @@ def train(args):
         num_heads=args.num_heads,
         d_embed=args.d_embed,
         num_blocks=args.blocks,
+        softmax_scale=args.softmax_scale,
+        final_scale=args.final_scale,
     )
 
     model.jit()
@@ -50,7 +52,7 @@ def train(args):
         seq_indices = jnp.arange(logits.shape[1])[None, :]    # shape is [1, seq_len]
         losses = -logits[batch_indices, seq_indices, targets] + jax.nn.logsumexp(logits, axis=-1)  # shape is [batch, seq_len]
         return losses.mean()
-
+    
     loss_and_grad = jax.jit(jax.value_and_grad(cross_entropy_loss))
 
     key = jax.random.PRNGKey(args.seed)
@@ -114,8 +116,11 @@ def save_results(results, args):
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename = (
         f"embed{args.d_embed}_lr{args.lr:.4f}_{args.optimizer}_"
-        f"pre{args.pre_dualize}_post{args.post_dualize}_"
-        f"project{args.project}_manifold{args.manifold}_"
+        f"{'pre_' if args.pre_dualize else ''}"
+        f"{'post_' if args.post_dualize else ''}"
+        f"{'manifold_' if args.manifold else ''}"
+        f"{'project_' if args.project else ''}"
+        f"fscale{args.final_scale}_sscale{args.softmax_scale}_"
         f"wd{args.wd:.4f}_steps{args.steps}_"
         f"{timestamp}.json"
     )
@@ -151,6 +156,8 @@ def main():
     parser.add_argument("--blocks", type=int, default=4, help="Number of transformer layers")
     parser.add_argument("--seq_len", type=int, default=256, help="Sequence length")
     parser.add_argument("--num_heads", type=int, default=4, help="Number of attention heads")
+    parser.add_argument("--softmax_scale", type=float, default=1.0, help="Softmax scale")
+    parser.add_argument("--final_scale", type=float, default=1.0, help="Final scale")
     parser.add_argument("--optimizer", type=str, default="adam", help="Optimizer")
     parser.add_argument("--pre_dualize", type=lambda x: x.lower() == "true", default=False, help="Whether to pre-dualize")
     parser.add_argument("--post_dualize", type=lambda x: x.lower() == "true", default=True, help="Whether to post-dualize")
