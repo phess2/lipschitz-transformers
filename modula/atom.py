@@ -190,17 +190,18 @@ class Embed(Atom):
         return {}
 
 class Scalar(Atom):
-    def __init__(self, tracker=None):
+    def __init__(self, scale=1, tracker=None):
         super().__init__(tracker)
         self.smooth = True
         self.mass = 1
         self.sensitivity = 1
-        
+        self.scale = scale
+
     def forward(self, x, w):
         return x * w[0]
     
     def initialize(self, key):
-        return [jnp.ones(1)]
+        return [jnp.ones(1) * self.scale]
     
     def project(self, w):
         return [jnp.sign(w[0])]
@@ -219,6 +220,13 @@ class Scalar(Atom):
         self.log_info["scalar"].append(w[0])
         return {self.tracker: self.log_info}
 
+class ExpScalar(Scalar):
+    def __init__(self, scale=0, tracker=None):
+        super().__init__(scale=scale, tracker=tracker)
+
+    def forward(self, x, w):
+        return x * jnp.exp(w[0])
+    
 if __name__ == "__main__":
     key = jax.random.PRNGKey(0)
 
