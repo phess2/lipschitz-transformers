@@ -118,6 +118,7 @@ def train(args):
     
     log["losses"] = losses
     log["val_losses"] = val_losses
+    log["accuracies"] = accuracies
     return log
 
 def save_results(results, args):
