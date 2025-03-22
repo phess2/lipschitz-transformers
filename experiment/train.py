@@ -7,53 +7,56 @@ import glob
 import json
 import argparse
 from pathlib import Path
+from functools import partial
 import numpy as np
 import time
 import jax
 import jax.numpy as jnp
-from modula.compound import OrthogonalGPT
+from modula.compound import OrthogonalGPT, MLP
+from modula.bond import Flatten
 
 np.random.seed(0)
 
 from data.shakespeare import load_shakespeare
+from data.cifar10 import load_cifar10
 
 def load_data(args):
-    data = load_shakespeare(args.seq_len, args.batch_size)
+    if args.data == "shakespeare":
+        data = load_shakespeare(args.seq_len, args.batch_size)
+    elif args.data == "cifar":
+        data = load_cifar10(args.batch_size)
+    else:
+        raise ValueError(f"Unknown dataset: {args.data}")
+    return data["train_loader"], data["test_loader"], data["loss"]
 
-    train_loader = data["train_loader"]
-    val_loader = data["val_loader"]
-    encode = data["encode"]
-    decode = data["decode"]
-    vocab_size = data["vocab_size"]
-
-    return train_loader, val_loader, encode, decode, vocab_size
+def create_model(args):
+    if args.data == "shakespeare":
+        return OrthogonalGPT(
+            vocab_size=65,
+            num_heads=args.num_heads,
+            d_embed=args.d_embed,
+            num_blocks=args.blocks,
+            softmax_scale=args.softmax_scale,
+            final_scale=args.final_scale,
+        )
+    elif args.data == "cifar":
+        return MLP(
+            output_dim=10,
+            input_dim=32*32*3,
+            width=args.d_embed,
+            depth=args.blocks,
+        ) @ Flatten()
+    else:
+        raise ValueError(f"Unknown dataset: {args.data}")
 
 def train(args):
-    train_loader, val_loader, encode, decode, vocab_size = load_data(args)
+    train_loader, val_loader, loss = load_data(args)
 
-    log_interval = 10
-    val_interval = 100
-    val_iters = 50
-
-    model = OrthogonalGPT(
-        vocab_size=vocab_size,
-        num_heads=args.num_heads,
-        d_embed=args.d_embed,
-        num_blocks=args.blocks,
-        softmax_scale=args.softmax_scale,
-        final_scale=args.final_scale,
-    )
-
+    model = create_model(args)
     model.jit()
 
-    def cross_entropy_loss(w, inputs, targets):
-        logits = model(inputs, w)  # shape is [batch, seq_len, vocab_size]
-        batch_indices = jnp.arange(logits.shape[0])[:, None]  # shape is [batch, 1]
-        seq_indices = jnp.arange(logits.shape[1])[None, :]    # shape is [1, seq_len]
-        losses = -logits[batch_indices, seq_indices, targets] + jax.nn.logsumexp(logits, axis=-1)  # shape is [batch, seq_len]
-        return losses.mean()
-    
-    loss_and_grad = jax.jit(jax.value_and_grad(cross_entropy_loss))
+    # loss takes (model, w, inputs, targets), so we wrap model in first
+    loss_and_grad = jax.jit(jax.value_and_grad(partial(loss, model)))
 
     key = jax.random.PRNGKey(args.seed)
     w = model.initialize(key)
@@ -61,6 +64,7 @@ def train(args):
 
     losses = []
     val_losses = []
+    accuracies = []
     num_params = sum(jnp.prod(jnp.array(p.shape)) for p in w).item()
     print(f"Training with {num_params} parameters")
 
@@ -87,20 +91,26 @@ def train(args):
             w = model.project(w)
         losses.append(float(loss))
 
-        if step % log_interval == 0:
+        if step % args.log_interval == 0:
             print(f"Step {step}: loss {loss}")
             log = model.log(w, grad_w)
         
-        if step % val_interval == 0:
+        if step % args.val_interval == 0:
+            accuracies_to_avg = []
             val_losses_to_avg = []
             for val_inputs, val_targets in val_loader:
                 loss, _ = loss_and_grad(w, val_inputs, val_targets)
                 val_losses_to_avg.append(float(loss))
-                if len(val_losses_to_avg) >= val_iters:
+                logits = model(val_inputs, w)
+                preds = jnp.argmax(logits, axis=-1)
+                targets = jnp.argmax(val_targets, axis=-1)
+                accuracies_to_avg.append(jnp.mean(preds == targets))
+                if len(val_losses_to_avg) >= args.val_iters:
                     break
-            val_loss = sum(val_losses_to_avg)/len(val_losses_to_avg)
-            print(f"--> val loss {val_loss}")
-            val_losses.append(float(val_loss))
+            val_losses.append(float(sum(val_losses_to_avg)/len(val_losses_to_avg)))
+            accuracies.append(float(sum(accuracies_to_avg)/len(accuracies_to_avg)))
+            print(f"--> val loss {val_losses[-1]}")
+            print(f"--> val accuracy {accuracies[-1]}")
         step += 1
 
         if step >= args.steps:
@@ -113,16 +123,17 @@ def train(args):
 def save_results(results, args):
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    timestamp_to_millisecond = time.strftime("%Y%m%d_%H%M%S") + f"{int(time.time() * 1000) % 1000:03d}"
     filename = (
+        f"{args.data}_"
         f"embed{args.d_embed}_lr{args.lr:.4f}_{args.optimizer}_"
         f"{'pre_' if args.pre_dualize else ''}"
         f"{'post_' if args.post_dualize else ''}"
         f"{'manifold_' if args.manifold else ''}"
         f"{'project_' if args.project else ''}"
-        f"fscale{args.final_scale}_sscale{args.softmax_scale}_"
+        #f"fscale{args.final_scale}_sscale{args.softmax_scale}_"
         f"wd{args.wd:.4f}_steps{args.steps}_"
-        f"{timestamp}.json"
+        f"{timestamp_to_millisecond}.json"
     )
 
     output = {
@@ -164,12 +175,17 @@ def main():
     parser.add_argument("--beta1", type=float, default=0.95, help="Momentum buffer 1 coefficient")
     parser.add_argument("--beta2", type=float, default=0.99, help="Momentum buffer 2 coefficient")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
-    parser.add_argument("--project", type=lambda x: x.lower() == "true", default=True, help="Whether to project the weights")
+    parser.add_argument("--project", type=lambda x: x.lower() == "true", default=False, help="Whether to project the weights")
     parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=True, help="Whether to constrain to the manifold directly")
     parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
+    parser.add_argument("--data", type=str, default="shakespeare", help="Which dataset to use")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--output-dir", type=str, default="results", help="Output directory")
     args = parser.parse_args()
+
+    args.log_interval = 10
+    args.val_interval = 100
+    args.val_iters = 50
     
     results = train(args)    
     save_results(results, args)

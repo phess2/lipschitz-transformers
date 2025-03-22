@@ -43,6 +43,7 @@ with open('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/
         f'--project {params[$i][\"project\"]} '
         f'--manifold {params[$i][\"manifold\"]} '
         f'--steps {params[$i][\"steps\"]} '
+        f'--data {params[$i][\"data\"]} '
         f'--output-dir {params[$i][\"output_dir\"]} '
     )
 ")

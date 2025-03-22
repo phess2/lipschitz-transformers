@@ -17,9 +17,9 @@ optimizer_pre_post_lr_wd = [
 d_embeds = [128]
 num_heads = [4]
 project = [False]
-manifold = True
-softmax_scales = [4**i for i in range(6)]
-final_scales = [4**i for i in range(6)]
+manifold = False
+softmax_scales = [1]#[4**i for i in range(6)]
+final_scales = [1]#[4**i for i in range(6)]
 
 blocks = 4
 seq_len = 256
@@ -30,6 +30,7 @@ beta1 = 0.95
 beta2 = 0.99
 
 seeds = [0]
+data = "cifar"
 output_dir = "results"
 
 # Create all combinations
@@ -61,6 +62,7 @@ for optimizer, pre, post, lrs, wds in optimizer_pre_post_lr_wd:
                                         'project': proj,
                                         'manifold': manifold,
                                         'steps': steps,
+                                        'data': data,
                                         'seed': seed,
                                         'output_dir': output_dir,
                                     })
