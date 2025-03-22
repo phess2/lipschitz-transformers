@@ -141,6 +141,14 @@ def download_shakespeare_data(data_dir: str) -> None:
     print("Shakespeare dataset processing complete.")
 
 
+def cross_entropy_loss(model, w, inputs, targets):
+        logits = model(inputs, w)  # shape is [batch, seq_len, vocab_size]
+        batch_indices = jnp.arange(logits.shape[0])[:, None]  # shape is [batch, 1]
+        seq_indices = jnp.arange(logits.shape[1])[None, :]    # shape is [1, seq_len]
+        losses = -logits[batch_indices, seq_indices, targets] + jax.nn.logsumexp(logits, axis=-1)  # shape is [batch, seq_len]
+        return losses.mean()
+
+
 def load_shakespeare(context_length: int, batch_size: int, shuffle: bool = True) -> Dict[str, Any]:
     """Load the Shakespeare dataset and create dataloaders.
     
@@ -177,7 +185,8 @@ def load_shakespeare(context_length: int, batch_size: int, shuffle: bool = True)
         'meta': meta,
         'vocab_size': meta['vocab_size'],
         'encode': lambda s: [meta['stoi'][c] for c in s],
-        'decode': lambda l: ''.join([meta['itos'][int(i)] for i in l])
+        'decode': lambda l: ''.join([meta['itos'][int(i)] for i in l]),
+        'loss': cross_entropy_loss
     }
 
 

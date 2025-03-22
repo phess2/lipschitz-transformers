@@ -12,7 +12,10 @@ examples/.ipynb_checkpoints/
 examples/data/*
 !examples/data/*.py
 
-experiment/data
+experiment/data/cifar10_files/
+experiment/data/mnist_files/
+experiment/data/shakespeare/
+experiment/data/__pycache__/
 experiment/logs
 experiment/*.png
 experiment/result*
