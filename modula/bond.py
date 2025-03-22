@@ -22,6 +22,15 @@ class GeLU(Bond):
     def forward(self, x, w):
         return jax.nn.gelu(x) / 1.1289  # 1.1289 is the max derivative of gelu(x)
 
+class Flatten(Bond):
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+
+    def forward(self, x, w):
+        return x.reshape(x.shape[0], -1)
+
 class SplitIntoHeads(Bond):
     """Reshapes an input to have heads.
 

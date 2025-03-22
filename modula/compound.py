@@ -3,10 +3,10 @@ from modula.atom import *
 from modula.bond import *
 
 def MLP(output_dim, input_dim, width, depth):
-    m = Linear(output_dim, width) @ ReLU()
-    for _ in range(depth-2):
-        m = m @ Linear(width, width) @ ReLU()
-    return m @ Linear(width, input_dim)
+    m = Linear(output_dim, width, tracker="mlp_in") @ ReLU()
+    for i in range(depth-2):
+        m = m @ Linear(width, width, tracker=f"mlp_{i}") @ ReLU()
+    return m @ Linear(width, input_dim, tracker="mlp_out")
 
 def Attention(num_heads, d_embed, d_query, d_value, layer_idx=0):
     """Multi-head attention"""
@@ -45,7 +45,7 @@ def OrthogonalAttention(num_heads, d_embed, softmax_scale, layer_idx=0):
     V = TransposeHeads() @ HeadedLinear(num_heads, d_embed, d_embed, tracker=f"v{layer_idx}")
     W = HeadedLinearOut(num_heads, d_embed, d_embed, tracker=f"w{layer_idx}") @ TransposeHeads()
 
-    AttentionScores = Sigmoid() @ ExpScalar(scale=softmax_scale, tracker=f"softmax{layer_idx}") @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
+    AttentionScores = Softmax() @ SquareScalar(scale=softmax_scale, tracker=f"softmax{layer_idx}") @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
     return ReduceHeads() @ ((1/3) * W) @ ApplyAttentionScores() @ (V, AttentionScores)
 
 def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, softmax_scale=1.0, final_scale=1.0):
@@ -62,6 +62,6 @@ def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, sof
     
     blocks.tare(absolute=blocks_mass)
 
-    out = ExpScalar(scale=final_scale, tracker="final_scale") @ Linear(vocab_size, d_embed, tracker="mlp_final")
+    out = SquareScalar(scale=final_scale, tracker="final_scale") @ Linear(vocab_size, d_embed, tracker="mlp_final")
 
     return out @ blocks @ embed

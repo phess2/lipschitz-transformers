@@ -220,6 +220,13 @@ class Scalar(Atom):
         self.log_info["scalar"].append(w[0])
         return {self.tracker: self.log_info}
 
+class SquareScalar(Scalar):
+    def __init__(self, scale=0, tracker=None):
+        super().__init__(scale=scale, tracker=tracker)
+
+    def forward(self, x, w):
+        return x * w[0]**2
+
 class ExpScalar(Scalar):
     def __init__(self, scale=0, tracker=None):
         super().__init__(scale=scale, tracker=tracker)
