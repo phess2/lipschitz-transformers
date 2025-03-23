@@ -24,7 +24,8 @@ class ImageDataset:
 class DataLoader:
     """JAX dataloader for image data."""
     
-    def __init__(self, dataset: ImageDataset, batch_size: int, shuffle: bool = False, drop_last: bool = True, seed: int = 0):
+    def __init__(self, dataset: ImageDataset, batch_size: int, shuffle: bool = False, 
+                 drop_last: bool = True, seed: int = 0, repeat: bool = True):
         """Initialize the dataloader.
         
         Args:
@@ -33,44 +34,51 @@ class DataLoader:
             shuffle: Whether to shuffle the dataset
             drop_last: Whether to drop the last incomplete batch
             seed: Random seed for shuffling
+            repeat: Whether to restart iteration after reaching the end
         """
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.drop_last = drop_last
         self.key = jax.random.PRNGKey(seed)
+        self.repeat = repeat
         
     def __iter__(self) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
         """Create an iterator over the dataset."""
-        indices = jnp.arange(len(self.dataset))
-        
-        if self.shuffle:
-            self.key, subkey = jax.random.split(self.key)
-            indices = jax.random.permutation(subkey, indices)
-        
-        # Calculate number of batches
-        if self.drop_last:
-            num_batches = len(self.dataset) // self.batch_size
-        else:
-            num_batches = (len(self.dataset) + self.batch_size - 1) // self.batch_size
-        
-        for i in range(num_batches):
-            start_idx = i * self.batch_size
-            end_idx = min(start_idx + self.batch_size, len(self.dataset))
-            batch_indices = indices[start_idx:end_idx]
+        while True:  # This allows for infinite iteration if repeat=True
+            indices = jnp.arange(len(self.dataset))
             
-            # Get samples for this batch
-            xs, ys = [], []
-            for idx in batch_indices:
-                x, y = self.dataset[int(idx)]
-                xs.append(x)
-                ys.append(y)
+            if self.shuffle:
+                self.key, subkey = jax.random.split(self.key)
+                indices = jax.random.permutation(subkey, indices)
             
-            # Stack into batch
-            x_batch = jnp.stack(xs)
-            y_batch = jnp.stack(ys)
+            # Calculate number of batches
+            if self.drop_last:
+                num_batches = len(self.dataset) // self.batch_size
+            else:
+                num_batches = (len(self.dataset) + self.batch_size - 1) // self.batch_size
             
-            yield x_batch, y_batch
+            for i in range(num_batches):
+                start_idx = i * self.batch_size
+                end_idx = min(start_idx + self.batch_size, len(self.dataset))
+                batch_indices = indices[start_idx:end_idx]
+                
+                # Get samples for this batch
+                xs, ys = [], []
+                for idx in batch_indices:
+                    x, y = self.dataset[int(idx)]
+                    xs.append(x)
+                    ys.append(y)
+                
+                # Stack into batch
+                x_batch = jnp.stack(xs)
+                y_batch = jnp.stack(ys)
+                
+                yield x_batch, y_batch
+            
+            # If not repeating, break after one full iteration
+            if not self.repeat:
+                break
 
 def _download_and_extract_cifar10():
     """
@@ -127,14 +135,14 @@ def _load_cifar10_data(normalize=True):
 
     return train_images, train_labels, test_images, test_labels
 
-# Define a loss function appropriate for classification tasks
 def classification_loss(model, w, inputs, targets):
     logits = model(inputs, w)  # shape is [batch, num_classes]
     num_classes = logits.shape[-1]
     one_hot_targets = jax.nn.one_hot(targets, num_classes)
     return -jnp.sum(one_hot_targets * jax.nn.log_softmax(logits)) / inputs.shape[0]
 
-def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = True) -> Dict[str, Any]:
+def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = True, 
+                 repeat: bool = True) -> Dict[str, Any]:
     """
     Load the CIFAR-10 dataset and create dataloaders.
     
@@ -142,6 +150,7 @@ def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = 
         batch_size: Number of samples per batch
         shuffle: Whether to shuffle the training data
         normalize: Whether to normalize the images to [0, 1]
+        repeat: Whether to restart iteration after reaching the end
         
     Returns:
         Dictionary containing train_loader, test_loader, and metadata
@@ -154,8 +163,8 @@ def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = 
     test_dataset = ImageDataset(test_images, test_labels)
     
     # Create dataloaders
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, repeat=repeat)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, repeat=repeat)
     
     # Define class names
     class_names = ['airplane', 'automobile', 'bird', 'cat', 'deer', 
