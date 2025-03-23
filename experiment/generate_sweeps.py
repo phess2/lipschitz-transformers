@@ -3,31 +3,31 @@ import json
 from pathlib import Path
 
 optimizer_pre_post_lr_wd = [
-    #("adam", False, False, np.logspace(-3.25, -2, 8), [0.01]),  # Adam
+    #("adam", False, False, np.logspace(-4, -2, 8), [0.01]),  # Adam
     #("adam", False, True,  np.logspace(-2.5, -0.5, 8), [0.01]),
     #("adam", True, False,  np.logspace(-3, -1, 8), [0.01]),
     #("adam", True, True,   np.logspace(-2.5, -0.5, 8), [0.01]),
-    #("muon", False, False, np.logspace(-2, 0, 8), [0.01]),  # SGD
+    #("sgd", False, False, np.logspace(-3, -1, 8), [0]),  # SGD
     #("muon", False, True,  np.logspace(-1, 0.5, 8), [0.01]),  # Muon
     #("muon", True, False,  np.logspace(-0.5, 1.5, 8), [0.01]),
-    ("muon", False, True,  np.logspace(-2.5, -0.5, 5), [0.01]),
+    ("muon", False, True,  np.logspace(-2, 0, 8), [0]),
     #("muon", True, True,   np.logspace(-1, 0.5, 8), [0.01]),
 ]
-#d_embeds = [64, 128, 256, 512]
-d_embeds = [128]
-num_heads = [4]
-project = [False]
-manifold = False
-softmax_scales = [1]#[4**i for i in range(6)]
-final_scales = [1]#[4**i for i in range(6)]
-
+d_embeds = [256]
+project = [True]
+manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 blocks = 4
-seq_len = 256
-batch_size = 64
 
-steps = 2001
+softmax_scales = [1]#[4**i for i in range(6)]
+final_scales = [1, 2, 4, 8, 16, 32]#[4**i for i in range(6)]
+
+num_heads = [4]
+seq_len = 256
+
+steps = 4001
 beta1 = 0.95
 beta2 = 0.99
+batch_size = 128
 
 seeds = [0]
 data = "cifar"
@@ -36,6 +36,7 @@ output_dir = "results"
 # Create all combinations
 combinations = []
 for optimizer, pre, post, lrs, wds in optimizer_pre_post_lr_wd:
+    assert not manifold or (post and not pre), "manifold optimization requires post_dualize = True and pre_dualize = False"
     for lr in lrs:
         for softmax_scale in softmax_scales:
             for final_scale in final_scales:
