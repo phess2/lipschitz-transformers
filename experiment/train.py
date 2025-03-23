@@ -12,8 +12,9 @@ import numpy as np
 import time
 import jax
 import jax.numpy as jnp
-from modula.compound import OrthogonalGPT, MLP
+from modula.compound import OrthogonalGPT, MLP, ManifoldMLP, LakerMLP
 from modula.bond import Flatten
+from modula.atom import Scalar
 
 np.random.seed(0)
 
@@ -40,12 +41,13 @@ def create_model(args):
             final_scale=args.final_scale,
         )
     elif args.data == "cifar":
-        return MLP(
-            output_dim=10,
-            input_dim=32*32*3,
-            width=args.d_embed,
-            depth=args.blocks,
-        ) @ Flatten()
+        kwargs = {"output_dim": 10, "input_dim": 32*32*3, "width": args.d_embed, "depth": args.blocks}
+        if args.manifold:
+            return Scalar(args.final_scale) @ ManifoldMLP(**kwargs) @ Flatten()
+        elif args.project:
+            return Scalar(args.final_scale) @ LakerMLP(**kwargs) @ Flatten()
+        else:
+            return MLP(**kwargs) @ Flatten()
     else:
         raise ValueError(f"Unknown dataset: {args.data}")
 
@@ -74,26 +76,21 @@ def train(args):
     lr_schedule = lambda step: args.lr * (args.steps - step) / args.steps
     for inputs, targets in train_loader:
         loss, grad_w = loss_and_grad(w, inputs, targets)
-        if args.manifold:
-            # Stiefel manifold optimization uses simple momentum
-            buf1 = [args.beta1 * m + (1-args.beta1) * grad_w for m, grad_w in zip(buf1, grad_w)]
-            d_w = model.dualize(buf1, w)
-        else:
-            # pre_dualize, update first moment, update second moment, possibly apply adam, post_dualize
-            d_m = model.dualize(grad_w) if args.pre_dualize else grad_w
-            buf1 = [args.beta1 * m + (1-args.beta1) * d_m    for m, d_m in zip(buf1, d_m)]
-            buf2 = [args.beta2 * m + (1-args.beta2) * d_m**2 for m, d_m in zip(buf2, d_m)]
-            d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
-            d_w = model.dualize(d_w) if args.post_dualize else d_w
-            w = [(1 - args.wd * lr_schedule(step)) * weight for weight in w]
+        # pre_dualize, update first moment, update second moment, possibly apply adam, post_dualize
+        d_m = model.dualize(grad_w) if args.pre_dualize else grad_w
+        buf1 = [args.beta1 * m + (1-args.beta1) * d_m    for m, d_m in zip(buf1, d_m)]
+        buf2 = [args.beta2 * m + (1-args.beta2) * d_m**2 for m, d_m in zip(buf2, d_m)]
+        d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
+        d_w = model.dualize(d_w) if args.post_dualize else d_w
+        w = [(1 - args.wd * lr_schedule(step)) * weight for weight in w]
         w = model.step(w, d_w, lr_schedule(step))
         if args.project:
             w = model.project(w)
-        losses.append(float(loss))
 
         if step % args.log_interval == 0:
             print(f"Step {step}: loss {loss}")
             log = model.log(w, grad_w)
+            losses.append(float(loss))
         
         if step % args.val_interval == 0:
             accuracies_to_avg = []
@@ -103,8 +100,7 @@ def train(args):
                 val_losses_to_avg.append(float(loss))
                 logits = model(val_inputs, w)
                 preds = jnp.argmax(logits, axis=-1)
-                targets = jnp.argmax(val_targets, axis=-1)
-                accuracies_to_avg.append(jnp.mean(preds == targets))
+                accuracies_to_avg.append(jnp.mean(preds == val_targets))
                 if len(val_losses_to_avg) >= args.val_iters:
                     break
             val_losses.append(float(sum(val_losses_to_avg)/len(val_losses_to_avg)))
@@ -177,15 +173,15 @@ def main():
     parser.add_argument("--beta2", type=float, default=0.99, help="Momentum buffer 2 coefficient")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--project", type=lambda x: x.lower() == "true", default=False, help="Whether to project the weights")
-    parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=True, help="Whether to constrain to the manifold directly")
+    parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=False, help="Whether to constrain to the manifold directly")
     parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
     parser.add_argument("--data", type=str, default="shakespeare", help="Which dataset to use")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
     parser.add_argument("--output-dir", type=str, default="results", help="Output directory")
     args = parser.parse_args()
 
-    args.log_interval = 10
-    args.val_interval = 100
+    args.log_interval = 10 if args.data == "shakespeare" else 100
+    args.val_interval = 100 if args.data == "shakespeare" else 500
     args.val_iters = 50
     
     results = train(args)    
