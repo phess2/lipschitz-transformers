@@ -8,6 +8,18 @@ def MLP(output_dim, input_dim, width, depth):
         m = m @ Linear(width, width, tracker=f"mlp_{i}") @ ReLU()
     return m @ Linear(width, input_dim, tracker="mlp_out")
 
+def ManifoldMLP(output_dim, input_dim, width, depth):
+    m = ManifoldLinear(output_dim, width, tracker="mlp_in") @ ReLU()
+    for i in range(depth-2):
+        m = m @ ManifoldLinear(width, width, tracker=f"mlp_{i}") @ ReLU()
+    return m @ ManifoldLinear(width, input_dim, tracker="mlp_out")
+
+def LakerMLP(output_dim, input_dim, width, depth):
+    m = LakerLinear(output_dim, width, tracker="mlp_in") @ ReLU()
+    for i in range(depth-2):
+        m = m @ LakerLinear(width, width, tracker=f"mlp_{i}") @ ReLU()
+    return m @ LakerLinear(width, input_dim, tracker="mlp_out")
+
 def Attention(num_heads, d_embed, d_query, d_value, layer_idx=0):
     """Multi-head attention"""
 

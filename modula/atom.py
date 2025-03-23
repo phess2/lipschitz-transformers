@@ -25,6 +25,29 @@ def orthogonalize(M):
     M_orthogonalized = jax.vmap(_orthogonalize)(M_flattened)
     return M_orthogonalized.reshape(M.shape) / len(M_flattened)
 
+def _laker_special_sauce(M):
+    """Apply min(1, x) to the singular values of a single matrix."""
+    coeffs = [
+        (-1.000, -0.3263, 0.3333),
+        (-1.001, 0.3333, -0.3333),
+    ]
+    transpose = M.shape[1] > M.shape[0]
+    if transpose:
+        M = M.T
+    for a, b, c in coeffs:
+        A = M.T @ M
+        I = jnp.eye(A.shape[0])
+        M = M @ (a * I + b * A + c * A @ A)
+    if transpose:
+        M = M.T
+    return M
+
+def laker_special_sauce(M):
+    """Batch special sauce tensors of shape [..., fanout, fanin]."""
+    matrix_shape = M.shape[-2:]
+    M_flattened = M.reshape((-1,) + matrix_shape)
+    M_soft_projected = jax.vmap(_laker_special_sauce)(M_flattened)
+    return M_soft_projected.reshape(M.shape)
 
 class Linear(Atom):
     def __init__(self, fanout, fanin, tracker=None):
@@ -67,6 +90,7 @@ class Linear(Atom):
 
 
 class ManifoldLinear(Linear):
+    """Weight matrix constrained to be semiorthogonal."""
     def __init__(self, fanout, fanin, tracker=None):
         super().__init__(fanout, fanin, tracker)
         
@@ -79,13 +103,37 @@ class ManifoldLinear(Linear):
 
         grad, w = grad_w[0], w[0]
         X = w.mT @ grad - grad.mT @ w
-        X = self.project([X])[0]
+        X = w @ self.project([X])[0]
         return [X]
     
     def step(self, w, d_w, lr):
         # See: https://docs.modula.systems/algorithms/manifold/orthogonal/
-        return [w[0] @ (jnp.eye(self.fanout) - lr * d_w[0]) / (1 + lr**2)**0.5]
+        return [(w[0] - lr * d_w[0]) / (1 + lr**2)**0.5]
 
+class LakerLinear(Linear):
+    """Weight matrix singular values no greater than 1."""
+    def __init__(self, fanout, fanin, zero_init=False, tracker=None):
+        super().__init__(fanout, fanin, tracker)
+        self.zero_init = zero_init
+
+    def initialize(self, key):
+        if self.tracker is not None:
+            self.log_info = {}
+        if self.zero_init:
+            return [jnp.zeros((self.fanout, self.fanin))]
+        else:
+            weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
+            return super().project([weight])
+
+    def project(self, w):
+        weight = w[0]
+        weight = laker_special_sauce(weight)
+        return [weight]
+
+    def dualize(self, grad_w, w=None, target_norm=1.0):
+        d_weight = super().project(grad_w)[0] * target_norm
+        return [d_weight]
+    
 
 class HeadedLinear(ManifoldLinear):
     """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
@@ -204,7 +252,7 @@ class Scalar(Atom):
         return [jnp.ones(1) * self.scale]
     
     def project(self, w):
-        return [jnp.sign(w[0])]
+        return [jnp.sign(w[0]) * self.scale]  # multiplying by self.scale might break sensitivity guarantees
     
     def dualize(self, grad_w, w=None, target_norm=1.0):
         d_weight = self.project(grad_w)[0] * target_norm
