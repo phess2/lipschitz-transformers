@@ -181,7 +181,7 @@ def load_shakespeare(context_length: int, batch_size: int, shuffle: bool = True)
     
     return {
         'train_loader': train_loader,
-        'val_loader': val_loader,
+        'test_loader': val_loader,
         'meta': meta,
         'vocab_size': meta['vocab_size'],
         'encode': lambda s: [meta['stoi'][c] for c in s],
