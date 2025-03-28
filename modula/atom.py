@@ -9,7 +9,7 @@ def _orthogonalize(M):
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
-    M = M / jnp.linalg.norm(M)
+    M = M / (jnp.linalg.norm(M) + 1e-12)
     for _ in range(10):
         A = M.T @ M
         I = jnp.eye(A.shape[0])
@@ -135,7 +135,66 @@ class LakerLinear(Linear):
         return [d_weight]
     
 
-class HeadedLinear(ManifoldLinear):
+class HeadedLinear(Linear):
+    """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
+    def __init__(self, num_heads, fanout, fanin, tracker=None):
+        super().__init__(fanout, fanin, tracker)
+        self.num_heads = num_heads
+    
+    def forward(self, x, w):
+        # x is shape [...fanin]
+        # w[0] is shape [heads, fanout, fanin]
+        # output is shape [...heads, fanout]
+        return jnp.einsum("...i, h o i -> ...h o", x, w[0])
+
+    def initialize(self, key):
+        if self.tracker is not None:
+            self.log_info = {}
+        weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
+        return self.project([weight])
+    
+    def log(self, w, grad_w):
+        if self.tracker is None:
+            return {}
+        
+        if "weight_norm" not in self.log_info:
+            self.log_info["weight_norm"] = []
+
+        max_norm = max([jnp.linalg.norm(w[0][i], ord=2) for i in range(self.num_heads)])
+        self.log_info["weight_norm"].append(max_norm * self.num_heads)
+        return {self.tracker: self.log_info}
+
+
+class ManifoldHeadedLinear(ManifoldLinear):
+    """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
+    def __init__(self, num_heads, fanout, fanin, tracker=None):
+        super().__init__(fanout, fanin, tracker)
+        self.num_heads = num_heads
+    
+    def forward(self, x, w):
+        # x is shape [...fanin]
+        # w[0] is shape [heads, fanout, fanin]
+        # output is shape [...heads, fanout]
+        return jnp.einsum("...i, h o i -> ...h o", x, w[0])
+
+    def initialize(self, key):
+        if self.tracker is not None:
+            self.log_info = {}
+        weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
+        return self.project([weight])
+    
+    def log(self, w, grad_w):
+        if self.tracker is None:
+            return {}
+        
+        if "weight_norm" not in self.log_info:
+            self.log_info["weight_norm"] = []
+
+        max_norm = max([jnp.linalg.norm(w[0][i], ord=2) for i in range(self.num_heads)])
+        self.log_info["weight_norm"].append(max_norm * self.num_heads)
+        return {self.tracker: self.log_info}
+
+class LakerHeadedLinear(LakerLinear):
     """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
     def __init__(self, num_heads, fanout, fanin, tracker=None):
         super().__init__(fanout, fanin, tracker)
@@ -174,6 +233,26 @@ class HeadedLinearOut(HeadedLinear):
         # output is shape [...heads, fanout]
         return jnp.einsum("...h i, h o i -> ...h o", x, w[0])
         
+
+class ManifoldHeadedLinearOut(ManifoldHeadedLinear):
+    def __init__(self, num_heads, fanout, fanin, tracker=None):
+        super().__init__(num_heads, fanout, fanin, tracker)
+
+    def forward(self, x, w):
+        # x is shape [...heads, fanin]
+        # w is shape [heads, fanout, fanin]
+        # output is shape [...heads, fanout]
+        return jnp.einsum("...h i, h o i -> ...h o", x, w[0])
+
+class LakerHeadedLinearOut(LakerHeadedLinear):
+    def __init__(self, num_heads, fanout, fanin, tracker=None):
+        super().__init__(num_heads, fanout, fanin, tracker)
+
+    def forward(self, x, w):
+        # x is shape [...heads, fanin]
+        # w is shape [heads, fanout, fanin]
+        # output is shape [...heads, fanout]
+        return jnp.einsum("...h i, h o i -> ...h o", x, w[0])
 
 
 def sr_sinkhorn(g, steps=5):

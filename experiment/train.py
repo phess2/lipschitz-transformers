@@ -12,7 +12,7 @@ import numpy as np
 import time
 import jax
 import jax.numpy as jnp
-from modula.compound import OrthogonalGPT, MLP, ManifoldMLP, LakerMLP
+from modula.compound import GPT, OrthogonalGPT, LakerGPT, MLP, ManifoldMLP, LakerMLP
 from modula.bond import Flatten
 from modula.atom import Scalar
 
@@ -32,18 +32,18 @@ def load_data(args):
 
 def create_model(args):
     if args.data == "shakespeare":
-        return OrthogonalGPT(
-            vocab_size=65,
-            num_heads=args.num_heads,
-            d_embed=args.d_embed,
-            num_blocks=args.blocks,
-            softmax_scale=args.softmax_scale,
-            final_scale=args.final_scale,
-        )
+        kwargs = {"vocab_size": 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads}
+        if args.manifold:
+            return OrthogonalGPT(**kwargs)
+        elif args.project:
+            return LakerGPT(**kwargs)
+        else:
+            return GPT(**kwargs)
     elif args.data == "cifar":
         kwargs = {"output_dim": 10, "input_dim": 32*32*3, "width": args.d_embed, "depth": args.blocks}
         if args.manifold:
-            return Scalar(args.final_scale) @ ManifoldMLP(**kwargs) @ Flatten()
+            assert args.project, "Manifold models must be projected due to rectangular matrices in CIFAR"
+            return Scalar(args.final_scale) @ MLP(**kwargs) @ Flatten()
         elif args.project:
             return Scalar(args.final_scale) @ LakerMLP(**kwargs) @ Flatten()
         else:
@@ -172,6 +172,7 @@ def main():
     parser.add_argument("--beta1", type=float, default=0.95, help="Momentum buffer 1 coefficient")
     parser.add_argument("--beta2", type=float, default=0.99, help="Momentum buffer 2 coefficient")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
+    parser.add_argument("--zero_init", type=lambda x: x.lower() == "true", default=True, help="Whether to zero-init the out projection in attention")
     parser.add_argument("--project", type=lambda x: x.lower() == "true", default=False, help="Whether to project the weights")
     parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=False, help="Whether to constrain to the manifold directly")
     parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
