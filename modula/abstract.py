@@ -42,7 +42,7 @@ class Module:
         # Return a weight list.
         raise NotImplementedError
 
-    def project(self, w):
+    def project(self, w, lr=1.0):
         # Return a weight list.
         raise NotImplementedError
 
@@ -99,7 +99,7 @@ class Bond(Module):
     def initialize(self, key):
         return []
 
-    def project(self, w):
+    def project(self, w, lr=1.0):
         return []
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
@@ -135,11 +135,11 @@ class CompositeModule(Module):
         key, subkey = jax.random.split(key)
         return m0.initialize(key) + m1.initialize(subkey)
 
-    def project(self, w):
+    def project(self, w, lr=1.0):
         m0, m1 = self.children
         w0 = w[:m0.atoms]
         w1 = w[m0.atoms:]
-        return m0.project(w0) + m1.project(w1)
+        return m0.project(w0, lr) + m1.project(w1, lr)
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
         if self.mass > 0:
@@ -197,10 +197,10 @@ class TupleModule(Module):
             w += m.initialize(subkey)
         return w
 
-    def project(self, w):
+    def project(self, w, lr=1.0):
         projected_w = []
         for m in self.children:
-            projected_w_m = m.project(w[:m.atoms])
+            projected_w_m = m.project(w[:m.atoms], lr)
             projected_w += projected_w_m
             w = w[m.atoms:]
         return projected_w

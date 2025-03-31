@@ -10,7 +10,7 @@ optimizer_pre_post_lr_wd = [
     #("sgd", False, False, np.logspace(-3, -1, 8), [0]),  # SGD
     #("muon", False, True,  np.logspace(-1, 0.5, 8), [0.01]),  # Muon
     #("muon", True, False,  np.logspace(-0.5, 1.5, 8), [0.01]),
-    ("muon", False, True,  np.logspace(-2, 0, 8), [0]),
+    ("muon", False, True,  [0.1], [0.1]),#np.logspace(-2, 0, 4), [0]),
     #("muon", True, True,   np.logspace(-1, 0.5, 8), [0.01]),
 ]
 d_embeds = [256]
@@ -18,20 +18,23 @@ project = [True]
 manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 blocks = 4
 
-softmax_scales = [1]#[4**i for i in range(6)]
-final_scales = [1, 2, 4, 8, 16, 32]#[4**i for i in range(6)]
+softmax_scales = [1] #[16, 64, 256, 1024] # [1, 4, 16, 64, 256, 1024]#[4**i for i in range(6)]
+final_scales = [1] #[16, 64, 256, 1024] # [1, 4, 16, 64, 256, 1024]#[4**i for i in range(6)]
 
 num_heads = [4]
 seq_len = 256
+zero_init = True
 
-steps = 4001
-beta1 = 0.95
+steps = 1001
+beta1 = 0.9
 beta2 = 0.99
-batch_size = 128
 
 seeds = [0]
 data = "cifar"
 output_dir = "results"
+
+batch_size = 64 if data == "shakespeare" else 128
+assert not (data == "cifar" and zero_init == False)
 
 # Create all combinations
 combinations = []
@@ -60,6 +63,7 @@ for optimizer, pre, post, lrs, wds in optimizer_pre_post_lr_wd:
                                         'beta1': beta1,
                                         'beta2': beta2,
                                         'batch_size': batch_size,
+                                        'zero_init': zero_init,
                                         'project': proj,
                                         'manifold': manifold,
                                         'steps': steps,

@@ -32,7 +32,7 @@ def load_data(args):
 
 def create_model(args):
     if args.data == "shakespeare":
-        kwargs = {"vocab_size": 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads}
+        kwargs = {"vocab_size": 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init, "wd": args.wd}
         if args.manifold:
             return OrthogonalGPT(**kwargs)
         elif args.project:
@@ -40,7 +40,7 @@ def create_model(args):
         else:
             return GPT(**kwargs)
     elif args.data == "cifar":
-        kwargs = {"output_dim": 10, "input_dim": 32*32*3, "width": args.d_embed, "depth": args.blocks}
+        kwargs = {"output_dim": 10, "input_dim": 32*32*3, "width": args.d_embed, "depth": args.blocks, "wd": args.wd}
         if args.manifold:
             assert args.project, "Manifold models must be projected due to rectangular matrices in CIFAR"
             return Scalar(args.final_scale) @ MLP(**kwargs) @ Flatten()
@@ -71,6 +71,7 @@ def train(args):
     print(f"Training with {num_params} parameters")
 
     step = 0
+    running_loss = 0.0
     buf1 = [0 * weight for weight in w]
     buf2 = [0 * weight for weight in w]
     lr_schedule = lambda step: args.lr * (args.steps - step) / args.steps
@@ -85,12 +86,15 @@ def train(args):
         w = [(1 - args.wd * lr_schedule(step)) * weight for weight in w]
         w = model.step(w, d_w, lr_schedule(step))
         if args.project:
-            w = model.project(w)
+            w = model.project(w, lr_schedule(step))
 
+        running_loss += loss.item()
         if step % args.log_interval == 0:
-            print(f"Step {step}: loss {loss}")
+            interval_loss = running_loss if step == 0 else running_loss / args.log_interval
+            print(f"Step {step}: loss {interval_loss}")
             log = model.log(w, grad_w)
-            losses.append(float(loss))
+            losses.append(float(interval_loss))
+            running_loss = 0.0
         
         if step % args.val_interval == 0:
             accuracies_to_avg = []
