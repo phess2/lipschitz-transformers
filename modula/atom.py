@@ -370,21 +370,24 @@ class LearnableScalar(Scalar):
     
     def project(self, w):
         return [w[0]]
+    
+    def dualize(self, grad_w, w=None, target_norm=1.0):
+        d_weight = super().project(grad_w)[0] * target_norm
+        return [d_weight]
 
 class LearnableSquareScalar(LearnableScalar):
     def __init__(self, scale=1, tracker=None):
         super().__init__(scale=scale, tracker=tracker)
     
-    def project(self, w):
-        return [w[0]]
+    def forward(self, x, w):
+        return x * w[0]**2
 
 class LearnableExpScalar(LearnableScalar):
     def __init__(self, scale=1, tracker=None):
         super().__init__(scale=scale, tracker=tracker)
     
-    def project(self, w):
-        return [w[0]]
-
+    def forward(self, x, w):
+        return x * jnp.exp(w[0])
 
     
 if __name__ == "__main__":

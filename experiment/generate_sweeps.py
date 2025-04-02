@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 optimizer_pre_post_lr_wd = [
-    ("adam", False, False, np.logspace(-3, -1.5, 10), [0]),  # Adam
+    ("adam", False, False, np.logspace(-3, -2, 10), [0]),  # Adam
     #("adam", False, True,  np.logspace(-2.5, -0.5, 8), [0.01]),
     #("adam", True, False,  np.logspace(-3, -1, 8), [0.01]),
     #("adam", True, True,   np.logspace(-2.5, -0.5, 8), [0.01]),
@@ -19,7 +19,7 @@ manifold = False   # if true, post_dualize must be true and pre_dualize must be 
 
 residual_scales = [1, 2]  # (1 - a/depth) * x + (a/depth) * block(x)
 softmax_scales = [1, 4, 8] # these get squared
-final_scales = [1, 32, 64, 128] # these are linear
+final_scales = [1, 8, 64, 512] # these are linear
 scales_learnable = [True]
 
 num_heads = [4]
