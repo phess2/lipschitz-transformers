@@ -32,7 +32,7 @@ def load_data(args):
 
 def create_model(args):
     if args.data == "shakespeare":
-        kwargs = {"vocab_size": 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init, "wd": args.wd}
+        kwargs = {"vocab_size": 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "residual_scale": args.residual_scale, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init}
         if args.manifold:
             return OrthogonalGPT(**kwargs)
         elif args.project:
@@ -40,7 +40,7 @@ def create_model(args):
         else:
             return GPT(**kwargs)
     elif args.data == "cifar":
-        kwargs = {"output_dim": 10, "input_dim": 32*32*3, "width": args.d_embed, "depth": args.blocks, "wd": args.wd}
+        kwargs = {"output_dim": 10, "input_dim": 32*32*3, "width": args.d_embed, "depth": args.blocks}
         if args.manifold:
             assert args.project, "Manifold models must be projected due to rectangular matrices in CIFAR"
             return Scalar(args.final_scale) @ MLP(**kwargs) @ Flatten()
@@ -86,7 +86,7 @@ def train(args):
         w = [(1 - args.wd * lr_schedule(step)) * weight for weight in w]
         w = model.step(w, d_w, lr_schedule(step))
         if args.project:
-            w = model.project(w, lr_schedule(step))
+            w = model.project(w)
 
         running_loss += loss.item()
         if step % args.log_interval == 0:
@@ -170,6 +170,7 @@ def main():
     parser.add_argument("--num_heads", type=int, default=4, help="Number of attention heads")
     parser.add_argument("--softmax_scale", type=float, default=1.0, help="Softmax scale")
     parser.add_argument("--final_scale", type=float, default=1.0, help="Final scale")
+    parser.add_argument("--residual_scale", type=float, default=1.0, help="a, where x becomes (1 - a/depth) * x + (a/depth) * block(x)")
     parser.add_argument("--optimizer", type=str, default="adam", help="Optimizer")
     parser.add_argument("--pre_dualize", type=lambda x: x.lower() == "true", default=False, help="Whether to pre-dualize")
     parser.add_argument("--post_dualize", type=lambda x: x.lower() == "true", default=True, help="Whether to post-dualize")
