@@ -25,29 +25,30 @@ def orthogonalize(M):
     M_orthogonalized = jax.vmap(_orthogonalize)(M_flattened)
     return M_orthogonalized.reshape(M.shape) / len(M_flattened)
 
-def _laker_special_sauce(M, lr=0.1, wd=0.1):
+def _laker_special_sauce(M):
     """Apply min(1, x) to the singular values of a single matrix."""
-    a = lr*wd
     coeffs = [
-        (1, -a),
-        (1, a),
+        (0.988281, 0.0917969, 0.0148315),
+        (1.00781, -0.0544434, 0.0498047),
+        (0.996094, 0.050293, -0.0375977),
+        (1.00781, -0.090332, 0.00268555)
     ]
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
-    for a, b in coeffs:
+    for a, b, c in coeffs:
         A = M.T @ M
         I = jnp.eye(A.shape[0])
-        M = M @ (a * I + b * A)
+        M = M @ (a * I + b * A + c * A @ A)
     if transpose:
         M = M.T
     return M
 
-def laker_special_sauce(M, lr=0.1, wd=0.1):
+def laker_special_sauce(M):
     """Batch special sauce tensors of shape [..., fanout, fanin]."""
     matrix_shape = M.shape[-2:]
     M_flattened = M.reshape((-1,) + matrix_shape)
-    M_soft_projected = jax.vmap(_laker_special_sauce)(M_flattened, lr, wd)
+    M_soft_projected = jax.vmap(_laker_special_sauce)(M_flattened)
     return M_soft_projected.reshape(M.shape)
 
 class Linear(Atom):
@@ -73,7 +74,7 @@ class Linear(Atom):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
         return self.project([weight])
 
-    def project(self, w, lr=1.0):
+    def project(self, w):
         weight = w[0]
         weight = orthogonalize(weight) * jnp.sqrt(self.fanout / self.fanin)
         return [weight]
@@ -116,9 +117,8 @@ class ManifoldLinear(Linear):
 
 class LakerLinear(Linear):
     """Weight matrix singular values no greater than 1."""
-    def __init__(self, fanout, fanin, wd=0.1, zero_init=False, tracker=None):
+    def __init__(self, fanout, fanin, zero_init=False, tracker=None):
         super().__init__(fanout, fanin, zero_init, tracker)
-        self.wd = wd
 
     def initialize(self, key):
         if self.tracker is not None:
@@ -128,9 +128,9 @@ class LakerLinear(Linear):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
         return super().project([weight])
 
-    def project(self, w, lr=1.0):
+    def project(self, w):
         weight = w[0]
-        weight = laker_special_sauce(weight, lr=lr, wd=self.wd)
+        weight = laker_special_sauce(weight)
         return [weight]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
@@ -306,7 +306,7 @@ class Embed(Atom):
         weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed))
         return self.project([weight])
 
-    def project(self, w, lr=1.0):
+    def project(self, w):
         weight = w[0]
         weight = weight / jnp.linalg.norm(weight, axis=0, keepdims=True) * jnp.sqrt(self.d_embed)
         return [weight]
@@ -333,7 +333,7 @@ class Scalar(Atom):
     def initialize(self, key):
         return [jnp.ones(1) * self.scale]
     
-    def project(self, w, lr=1.0):
+    def project(self, w):
         return [jnp.sign(w[0]) * self.scale]  # multiplying by self.scale might break sensitivity guarantees
     
     def dualize(self, grad_w, w=None, target_norm=1.0):
@@ -368,21 +368,21 @@ class LearnableScalar(Scalar):
     def __init__(self, scale=1, tracker=None):
         super().__init(scale=scale, tracker=tracker)
     
-    def project(self, w, lr=1.0):
+    def project(self, w):
         return [w[0]]
 
-class LearnableSquareScalar(SquareScalar):
+class LearnableSquareScalar(LearnableScalar):
     def __init__(self, scale=1, tracker=None):
         super().__init(scale=scale, tracker=tracker)
     
-    def project(self, w, lr=1.0):
+    def project(self, w):
         return [w[0]]
 
-class LearnableExpScalar(ExpScalar):
+class LearnableExpScalar(LearnableScalar):
     def __init__(self, scale=1, tracker=None):
         super().__init(scale=scale, tracker=tracker)
     
-    def project(self, w, lr=1.0):
+    def project(self, w):
         return [w[0]]
 
 
