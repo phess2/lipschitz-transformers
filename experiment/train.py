@@ -32,7 +32,7 @@ def load_data(args):
 
 def create_model(args):
     if args.data == "shakespeare":
-        kwargs = {"vocab_size": 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "residual_scale": args.residual_scale, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init}
+        kwargs = {"vocab_size": 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "residual_scale": args.residual_scale, "scales_learnable": args.scales_learnable, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init}
         if args.manifold:
             return OrthogonalGPT(**kwargs)
         elif args.project:
@@ -74,7 +74,7 @@ def train(args):
     running_loss = 0.0
     buf1 = [0 * weight for weight in w]
     buf2 = [0 * weight for weight in w]
-    lr_schedule = lambda step: args.lr * (args.steps - step) / args.steps
+    schedule = lambda step: (1 if not args.schedule == "linear" else (args.steps - step) / args.steps)
     for inputs, targets in train_loader:
         loss, grad_w = loss_and_grad(w, inputs, targets)
         # pre_dualize, update first moment, update second moment, possibly apply adam, post_dualize
@@ -83,8 +83,8 @@ def train(args):
         buf2 = [args.beta2 * m + (1-args.beta2) * d_m**2 for m, d_m in zip(buf2, d_m)]
         d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
         d_w = model.dualize(d_w) if args.post_dualize else d_w
-        w = [(1 - args.wd * lr_schedule(step)) * weight for weight in w]
-        w = model.step(w, d_w, lr_schedule(step))
+        w = [(1 - args.wd * args.lr * schedule(step)) * weight for weight in w]
+        w = model.step(w, d_w, args.lr * schedule(step))
         if args.project:
             w = model.project(w)
 
@@ -171,6 +171,7 @@ def main():
     parser.add_argument("--softmax_scale", type=float, default=1.0, help="Softmax scale")
     parser.add_argument("--final_scale", type=float, default=1.0, help="Final scale")
     parser.add_argument("--residual_scale", type=float, default=1.0, help="a, where x becomes (1 - a/depth) * x + (a/depth) * block(x)")
+    parser.add_argument("--scales_learnable", type=lambda x: x.lower() == "true", default=False, help="Whether to learn the scales")
     parser.add_argument("--optimizer", type=str, default="adam", help="Optimizer")
     parser.add_argument("--pre_dualize", type=lambda x: x.lower() == "true", default=False, help="Whether to pre-dualize")
     parser.add_argument("--post_dualize", type=lambda x: x.lower() == "true", default=True, help="Whether to post-dualize")
@@ -180,6 +181,7 @@ def main():
     parser.add_argument("--zero_init", type=lambda x: x.lower() == "true", default=True, help="Whether to zero-init the out projection in attention")
     parser.add_argument("--project", type=lambda x: x.lower() == "true", default=False, help="Whether to project the weights")
     parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=False, help="Whether to constrain to the manifold directly")
+    parser.add_argument("--schedule", type=str, default="linear", help="Learning rate schedule")
     parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
     parser.add_argument("--data", type=str, default="shakespeare", help="Which dataset to use")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")

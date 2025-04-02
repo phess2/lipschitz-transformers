@@ -2,8 +2,10 @@
 #SBATCH --job-name=manifold
 #SBATCH --output=/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/logs/sweep_%A_%a.out
 #SBATCH --error=/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/logs/sweep_%A_%a.err
-#SBATCH --array=0-479      # <<< set this to the number of parameter combinations from generate_sweeps.py
-#SBATCH --gres=gpu:1       # Request 1 GPU per task
+##ARRAY_LENGTH=$(/data/vision/phillipi/vector/bin/jq 'length' /data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/sweep_configs/parameter_grid.json)
+##SBATCH --array=0-$(($ARRAY_LENGTH-1))    # <<< set automatically to number of parameter combinations from generate_sweeps.py
+#SBATCH --array=0-359     # <<< set automatically to number of parameter combinations from generate_sweeps.py
+#SBATCH --gres=gpu:1      # Request 1 GPU per task
 #SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],sitzmann-4090-1,oliva-titanrtx-[1,3],freeman-titanrtx-[1-2],agrawal-v100-1,agrawal-2080ti-1,freeman-v100-[1-2],isola-titanrtx-1,isola-ada6000-1,improbablex[001-009]
 ##SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],isola-titanrtx-1,isola-ada6000-1
 #SBATCH --cpus-per-task=4
@@ -41,6 +43,7 @@ with open('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/
         f'--softmax_scale {params[$i][\"softmax_scale\"]} '
         f'--final_scale {params[$i][\"final_scale\"]} '
         f'--residual_scale {params[$i][\"residual_scale\"]} '
+        f'--scales_learnable {params[$i][\"scales_learnable\"]} '
         f'--optimizer {params[$i][\"optimizer\"]} '
         f'--pre_dualize {params[$i][\"pre_dualize\"]} '
         f'--post_dualize {params[$i][\"post_dualize\"]} '
@@ -50,6 +53,7 @@ with open('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/
         f'--zero_init {params[$i][\"zero_init\"]} '
         f'--project {params[$i][\"project\"]} '
         f'--manifold {params[$i][\"manifold\"]} '
+        f'--schedule {params[$i][\"schedule\"]} '
         f'--steps {params[$i][\"steps\"]} '
         f'--data {params[$i][\"data\"]} '
         f'--output-dir {params[$i][\"output_dir\"]} '

@@ -3,31 +3,33 @@ import json
 from pathlib import Path
 
 optimizer_pre_post_lr_wd = [
-    ("adam", False, False, np.logspace(-3, -1.5, 10), [0.1, 0.01, 0]),  # Adam
+    ("adam", False, False, np.logspace(-3, -1.5, 10), [0]),  # Adam
     #("adam", False, True,  np.logspace(-2.5, -0.5, 8), [0.01]),
     #("adam", True, False,  np.logspace(-3, -1, 8), [0.01]),
     #("adam", True, True,   np.logspace(-2.5, -0.5, 8), [0.01]),
     #("sgd", False, False, np.logspace(-3, -1, 8), [0]),  # SGD
     #("muon", False, True,  np.logspace(-1, 0.5, 8), [0.01]),  # Muon
     #("muon", True, False,  np.logspace(-0.5, 1.5, 8), [0.01]),
-    ("muon", False, True,  np.logspace(-1.5, 0, 10), [0.1, 0.01, 0]),#np.logspace(-2, 0, 4), [0]),
+    ("muon", False, True,  np.logspace(-1.5, 0, 10), [0]),#np.logspace(-2, 0, 4), [0]),
     #("muon", True, True,   np.logspace(-1, 0.5, 8), [0.01]),
 ]
 d_embeds = [128]
-project = [False, True]
+project = [True]
 manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 
-residual_scales = [0.5, 1, 2, 3]  # (1 - a/depth) * x + (a/depth) * block(x)
-softmax_scales = [32] #[16, 64, 256, 1024] # [1, 4, 16, 64, 256, 1024]#[4**i for i in range(6)]
-final_scales = [32] #[16, 64, 256, 1024] # [1, 4, 16, 64, 256, 1024]#[4**i for i in range(6)]
+residual_scales = [1, 2]  # (1 - a/depth) * x + (a/depth) * block(x)
+softmax_scales = [1, 4, 8] # these get squared
+final_scales = [1, 32, 64, 128] # these are linear
+scales_learnable = [True]
 
 num_heads = [4]
 seq_len = 256
 zero_init = True
 
-steps = 1001
+steps = 2001
 beta1 = 0.9
 beta2 = 0.95
+schedule = "linear"   # linear or none
 
 seeds = [0]
 data = "shakespeare"
@@ -46,35 +48,38 @@ for optimizer, pre, post, lrs, wds in optimizer_pre_post_lr_wd:
         for softmax_scale in softmax_scales:
             for final_scale in final_scales:
                 for residual_scale in residual_scales:
-                    for wd in wds:
-                        for d_embed in d_embeds:
-                            for nheads in num_heads:
-                                for proj in project:
-                                    for seed in seeds:
-                                        combinations.append({
-                                            'd_embed': d_embed,
-                                            'lr': lr,
-                                            'wd': wd,
-                                            'blocks': blocks,
-                                            'seq_len': seq_len,
-                                            'num_heads': nheads,
-                                            'softmax_scale': softmax_scale,
-                                            'final_scale': final_scale,
-                                            'residual_scale': residual_scale,
-                                            'optimizer': optimizer,
-                                            'pre_dualize': pre,
-                                            'post_dualize': post,
-                                            'beta1': beta1,
-                                            'beta2': beta2,
-                                            'batch_size': batch_size,
-                                            'zero_init': zero_init,
-                                            'project': proj,
-                                            'manifold': manifold,
-                                            'steps': steps,
-                                            'data': data,
-                                            'seed': seed,
-                                            'output_dir': output_dir,
-                                        })
+                    for scale_learnable in scales_learnable:
+                        for wd in wds:
+                            for d_embed in d_embeds:
+                                for nheads in num_heads:
+                                    for proj in project:
+                                        for seed in seeds:
+                                            combinations.append({
+                                                'd_embed': d_embed,
+                                                'lr': lr,
+                                                'wd': wd,
+                                                'blocks': blocks,
+                                                'seq_len': seq_len,
+                                                'num_heads': nheads,
+                                                'softmax_scale': softmax_scale,
+                                                'final_scale': final_scale,
+                                                'residual_scale': residual_scale,
+                                                'scales_learnable': scale_learnable,
+                                                'optimizer': optimizer,
+                                                'pre_dualize': pre,
+                                                'post_dualize': post,
+                                                'beta1': beta1,
+                                                'beta2': beta2,
+                                                'batch_size': batch_size,
+                                                'zero_init': zero_init,
+                                                'project': proj,
+                                                'manifold': manifold,
+                                                'steps': steps,
+                                                'schedule': schedule,
+                                                'data': data,
+                                                'seed': seed,
+                                                'output_dir': output_dir,
+                                            })
 
 # Save combinations to file
 path = Path('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/sweep_configs')

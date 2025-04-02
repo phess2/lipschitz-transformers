@@ -366,21 +366,21 @@ class ExpScalar(Scalar):
 
 class LearnableScalar(Scalar):
     def __init__(self, scale=1, tracker=None):
-        super().__init(scale=scale, tracker=tracker)
+        super().__init__(scale=scale, tracker=tracker)
     
     def project(self, w):
         return [w[0]]
 
 class LearnableSquareScalar(LearnableScalar):
     def __init__(self, scale=1, tracker=None):
-        super().__init(scale=scale, tracker=tracker)
+        super().__init__(scale=scale, tracker=tracker)
     
     def project(self, w):
         return [w[0]]
 
 class LearnableExpScalar(LearnableScalar):
     def __init__(self, scale=1, tracker=None):
-        super().__init(scale=scale, tracker=tracker)
+        super().__init__(scale=scale, tracker=tracker)
     
     def project(self, w):
         return [w[0]]

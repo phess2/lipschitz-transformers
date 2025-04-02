@@ -31,7 +31,7 @@ def Attention(num_heads, d_embed, d_query, d_value, zero_init=False, layer_idx=0
     AttentionScores = Softmax() @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
     return W @ (1/3 * ApplyAttentionScores()) @ (V, AttentionScores)
 
-def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mass=5, softmax_scale=None, final_scale=None, residual_scale=None, zero_init=False, wd=None):
+def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mass=5, softmax_scale=None, final_scale=None, residual_scale=None, scales_learnable=False, zero_init=False, wd=None):
     embed = Embed(d_embed, vocab_size)
     embed.tare()
 
@@ -60,7 +60,7 @@ def OrthogonalAttention(num_heads, d_embed, softmax_scale, layer_idx=0):
     AttentionScores = Softmax() @ SquareScalar(scale=softmax_scale, tracker=f"softmax{layer_idx}") @ CausalMask() @ AttentionQK() @ Rope(d_embed) @ (Q, K)
     return ReduceHeads() @ ((1/3) * W) @ ApplyAttentionScores() @ (V, AttentionScores)
 
-def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, softmax_scale=1.0, final_scale=1.0, residual_scale=1.0, wd=None):
+def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, softmax_scale=1.0, final_scale=1.0, residual_scale=1.0, scales_learnable=False, zero_init=False, wd=None):
     embed = Embed(d_embed, vocab_size)
     embed.tare()
 
@@ -78,7 +78,7 @@ def OrthogonalGPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, sof
 
     return out @ blocks @ embed
 
-def LakerAttention(num_heads, d_embed, d_query, d_value, softmax_scale=1, zero_init=True, layer_idx=0):
+def LakerAttention(num_heads, d_embed, d_query, d_value, softmax_scale=1, scales_learnable=False, zero_init=True, layer_idx=0):
     """
     Attention except all the singular values are at most 1.
     """
@@ -88,16 +88,17 @@ def LakerAttention(num_heads, d_embed, d_query, d_value, softmax_scale=1, zero_i
     V = SplitIntoHeads(num_heads) @ LakerLinear(num_heads * d_value, d_embed, tracker=f"v{layer_idx}")
     W = LakerLinear(d_embed, num_heads * d_value, zero_init=zero_init, tracker=f"w{layer_idx}") @ MergeHeads()
 
-    AttentionScores = Softmax() @ Scalar(scale=softmax_scale) @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
+    ScalarClass = SquareScalar if not scales_learnable else LearnableSquareScalar
+    AttentionScores = Softmax() @ ScalarClass(scale=softmax_scale, tracker=f"softmax{layer_idx}") @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
     return W @ (1/3 * ApplyAttentionScores()) @ (V, AttentionScores)
 
-def LakerGPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mass=5, softmax_scale=1.0, final_scale=1.0, residual_scale=1.0, zero_init=True):
+def LakerGPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mass=5, softmax_scale=1.0, final_scale=1.0, residual_scale=1.0, scales_learnable=False, zero_init=True):
     embed = Embed(d_embed, vocab_size)
     embed.tare()
 
     blocks = Identity()
     for i in range(num_blocks):
-        att = LakerAttention(num_heads, d_embed, d_query, d_value, softmax_scale, zero_init=zero_init, layer_idx=i)
+        att = LakerAttention(num_heads, d_embed, d_query, d_value, softmax_scale, scales_learnable, zero_init=zero_init, layer_idx=i)
         mlp = LakerLinear(d_embed, d_embed, tracker=f"mlp_out{i}") @ GeLU() @ LakerLinear(d_embed, d_embed, tracker=f"mlp_in{i}")
         att_block = (1-residual_scale/(2*num_blocks)) * Identity() + residual_scale/(2*num_blocks) * att
         mlp_block = (1-residual_scale/(2*num_blocks)) * Identity() + residual_scale/(2*num_blocks) * mlp
@@ -105,6 +106,7 @@ def LakerGPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, block
     
     blocks.tare(absolute=blocks_mass)
 
-    out = Scalar(scale=final_scale, tracker="final_scale") @ LakerLinear(vocab_size, d_embed, tracker="mlp_final")
+    ScalarClass = Scalar if not scales_learnable else LearnableScalar
+    out = ScalarClass(scale=final_scale, tracker="final_scale") @ LakerLinear(vocab_size, d_embed, tracker="mlp_final")
 
     return out @ blocks @ embed
