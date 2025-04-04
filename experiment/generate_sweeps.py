@@ -1,16 +1,20 @@
 import numpy as np
 import json
 from pathlib import Path
+import dotenv
+import os
+
+dotenv.load_dotenv()
 
 optimizer_pre_post_lr_wd = [
-    ("adam", False, False, np.logspace(-3, -2, 10), [0]),  # Adam
+    ("adam", False, False, np.logspace(-3, -2, 3), [0]),  # Adam
     #("adam", False, True,  np.logspace(-2.5, -0.5, 8), [0.01]),
-    #("adam", True, False,  np.logspace(-3, -1, 8), [0.01]),
+    ("adam", True, False,  np.logspace(-4, -2, 3), [0]),
     #("adam", True, True,   np.logspace(-2.5, -0.5, 8), [0.01]),
     #("sgd", False, False, np.logspace(-3, -1, 8), [0]),  # SGD
     #("muon", False, True,  np.logspace(-1, 0.5, 8), [0.01]),  # Muon
     #("muon", True, False,  np.logspace(-0.5, 1.5, 8), [0.01]),
-    ("muon", False, True,  np.logspace(-1.5, 0, 10), [0]),#np.logspace(-2, 0, 4), [0]),
+    ("muon", False, True,  np.logspace(-1.5, 0, 3), [0]),#np.logspace(-2, 0, 4), [0]),
     #("muon", True, True,   np.logspace(-1, 0.5, 8), [0.01]),
 ]
 d_embeds = [128]
@@ -26,7 +30,7 @@ num_heads = [4]
 seq_len = 256
 zero_init = True
 
-steps = 2001
+steps = 4001
 beta1 = 0.9
 beta2 = 0.95
 schedule = "linear"   # linear or none
@@ -82,7 +86,8 @@ for optimizer, pre, post, lrs, wds in optimizer_pre_post_lr_wd:
                                             })
 
 # Save combinations to file
-path = Path('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/sweep_configs')
+root_path = os.getenv('ROOT_PATH')
+path = Path(root_path) / 'experiment' / 'sweep_configs'
 path.mkdir(exist_ok=True)
 with open(path / 'parameter_grid.json', 'w') as f:
     json.dump(combinations, f, indent=2)

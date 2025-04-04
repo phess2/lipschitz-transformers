@@ -1,10 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=manifold
-#SBATCH --output=/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/logs/sweep_%A_%a.out
-#SBATCH --error=/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/logs/sweep_%A_%a.err
-##ARRAY_LENGTH=$(/data/vision/phillipi/vector/bin/jq 'length' /data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/sweep_configs/parameter_grid.json)
-##SBATCH --array=0-$(($ARRAY_LENGTH-1))    # <<< set automatically to number of parameter combinations from generate_sweeps.py
-#SBATCH --array=0-359     # <<< set automatically to number of parameter combinations from generate_sweeps.py
+#SBATCH --output=logs/sweep_%A_%a.out
+#SBATCH --error=logs/sweep_%A_%a.err
+#SBATCH --array=0-0       # <<< set automatically to number of parameter combinations from generate_sweeps.py
 #SBATCH --gres=gpu:1      # Request 1 GPU per task
 #SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],sitzmann-4090-1,oliva-titanrtx-[1,3],freeman-titanrtx-[1-2],agrawal-v100-1,agrawal-2080ti-1,freeman-v100-[1-2],isola-titanrtx-1,isola-ada6000-1,improbablex[001-009]
 ##SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],isola-titanrtx-1,isola-ada6000-1
@@ -21,17 +19,17 @@
 export PYTHONUNBUFFERED=1
 
 # Create necessary directories
-mkdir -p /data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/logs
-mkdir -p /data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/results
+mkdir -p logs
+mkdir -p results
 
 # Activate venv environment
-source /data/vision/phillipi/vector/duality/spring2025/.spring/bin/activate
+source ../.modula/bin/activate
 
 # Get the parameters for this job from the parameter grid
 export i=$SLURM_ARRAY_TASK_ID
 params=$(python -c "
 import json
-with open('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/sweep_configs/parameter_grid.json', 'r') as f:
+with open('sweep_configs/parameter_grid.json', 'r') as f:
     params = json.load(f)
     print(
         f'--d_embed {params[$i][\"d_embed\"]} '
@@ -62,4 +60,4 @@ with open('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/
 
 # Run the training script with these parameters
 echo $params
-python /data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/train.py $params
+python train.py $params

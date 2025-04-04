@@ -9,9 +9,11 @@ import matplotlib.pyplot as plt
 import glob
 from pathlib import Path
 import matplotlib as mpl
+import dotenv
 
-# Directory with result files
-path = Path('/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment')
+dotenv.load_dotenv()
+root_path = os.getenv('ROOT_PATH')
+path = Path(root_path + 'experiment')
 results_path = path / 'results-16-shakespeare-zero-init-laker-project'
 
 # Find all json files

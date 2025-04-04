@@ -48,6 +48,8 @@ if not cache_file.exists() or need_to_rebuild_cache():
                 'blocks': data['parameters']['blocks'],
                 'learning_rate': data['parameters']['lr'],
                 'batch_size': data['parameters']['batch_size'],
+                'pre_dualize': data['parameters']['pre_dualize'],
+                'post_dualize': data['parameters']['post_dualize'],
                 'optimizer': data['parameters']['optimizer'],
                 'weight_decay': data['parameters']['wd'],
                 'data': data['parameters']['data'],
@@ -57,7 +59,7 @@ if not cache_file.exists() or need_to_rebuild_cache():
                 'seed': data['parameters']['seed'],
                 'project': data['parameters']['project'],
                 'manifold': data['parameters']['manifold'],
-                'schedule': data['parameters']['schedule'],
+                'schedule': data['parameters']['schedule'] if 'schedule' in data['parameters'] else None,
                 'final_scale': data['parameters']['final_scale'],
                 'softmax_scale': data['parameters']['softmax_scale'],
                 'residual_scale': data['parameters']['residual_scale'],
@@ -72,7 +74,7 @@ else:
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
 panel_list = ['optimizer', 'final_scale']
-panel_filter = lambda x: x['residual_scale'] == 1.00 and x['project'] == True and x['final_scale'] <= 32
+panel_filter = lambda x: x['residual_scale'] == 1.00 and x['optimizer'] == 'muon' and x['final_scale'] <= 64.0 and x['weight_decay'] == 0.0
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
 x_string = 'softmax_scale'  # width, depth, batch_size         I AM MAKING PLOT GIF WORK
@@ -80,13 +82,13 @@ x_string_title = 'Softmax Scale'  # Width, Depth, Batch Size
 data = 'shakespeare'
 
 use_test_loss = False
-use_accuracy = False
+use_accuracy = True
 aggregator = lambda x: x[-1]   # this is the brutal honesty option
 #aggregator = lambda x: max(x) if use_accuracy else min(x)   # this one papers over overfitting
 
 GIF_MODE = True
 FPS = 5
-STEP_INCREMENT = 10 if not use_test_loss else 1  # we only record data every 100 steps anyway, unless it's training loss
+STEP_INCREMENT = 1 if use_test_loss or use_accuracy else 20  # we only record data every 100 steps anyway, unless it's training loss
 OUTPUT_DIR = Path('gif_frames')
 
 loss_string = 'Test' if use_test_loss or use_accuracy else 'Training'
@@ -97,6 +99,7 @@ history_string = 'accuracy_history' if use_accuracy else ('test_loss_history' if
 
 panel_prefix = {
     'optimizer': lambda x: x.capitalize(),
+    'pre_dualize': lambda x: 'Pre' if x else '',
     'project': lambda x: 'Proj' if x else 'NoProj',
     'weight_decay': lambda x: f'wd{x:.2f}',
     'final_scale': lambda x: f'fs{int(x)}',

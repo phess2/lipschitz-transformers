@@ -5,8 +5,12 @@ Takes results path and plots some observable over time, specified at the bottom 
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import json
+import dotenv
+import os
 
-path = "/data/vision/phillipi/vector/duality/spring2025/modula-v2/experiment/results-8-lr-sweep-exp-scalar-lr-4xed/embed128_lr0.0160_muon_preFalse_postTrue_projectFalse_manifoldTrue_final_scale0.0_softmax_scale0.0_wd0.0000_steps1001_20250319_070044.json"
+dotenv.load_dotenv()
+root_path = os.getenv('ROOT_PATH')
+path = root_path + "experiment/results-8-lr-sweep-exp-scalar-lr-4xed/embed128_lr0.0160_muon_preFalse_postTrue_projectFalse_manifoldTrue_final_scale0.0_softmax_scale0.0_wd0.0000_steps1001_20250319_070044.json"
 
 with open(path, "r") as f:
     data = json.load(f)
