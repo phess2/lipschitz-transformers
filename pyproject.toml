@@ -19,7 +19,8 @@ classifiers = [
 dependencies = [
     "jax[cuda12]",
     "requests",
-    "python-dotenv"
+    "python-dotenv",
+    "matplotlib"
 ]
 
 [tool.setuptools]
