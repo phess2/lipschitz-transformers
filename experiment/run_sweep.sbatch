@@ -2,7 +2,7 @@
 #SBATCH --job-name=manifold
 #SBATCH --output=logs/sweep_%A_%a.out
 #SBATCH --error=logs/sweep_%A_%a.err
-#SBATCH --array=0-0       # <<< set automatically to number of parameter combinations from generate_sweeps.py
+#SBATCH --array=0-0     # <<< set automatically to number of parameter combinations from generate_sweeps.py
 #SBATCH --gres=gpu:1      # Request 1 GPU per task
 #SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],sitzmann-4090-1,oliva-titanrtx-[1,3],freeman-titanrtx-[1-2],agrawal-v100-1,agrawal-2080ti-1,freeman-v100-[1-2],isola-titanrtx-1,isola-ada6000-1,improbablex[001-009]
 ##SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],isola-titanrtx-1,isola-ada6000-1
@@ -10,7 +10,7 @@
 #SBATCH --ntasks=1
 #SBATCH --open-mode=append
 #SBATCH --mem=64GB
-#SBATCH --time=1:00:00
+#SBATCH --time=24:00:00
 ##SBATCH --partition=vision-phillipi
 ##SBATCH --qos=vision-phillipi-main
 #SBATCH --partition=csail-shared
@@ -35,6 +35,7 @@ with open('sweep_configs/parameter_grid.json', 'r') as f:
         f'--d_embed {params[$i][\"d_embed\"]} '
         f'--lr {params[$i][\"lr\"]} '
         f'--wd {params[$i][\"wd\"]} '
+        f'--wd_power {params[$i][\"wd_power\"]} '
         f'--blocks {params[$i][\"blocks\"]} '
         f'--seq_len {params[$i][\"seq_len\"]} '
         f'--num_heads {params[$i][\"num_heads\"]} '

@@ -61,7 +61,8 @@ def train(args):
     loss_and_grad = jax.jit(jax.value_and_grad(partial(loss, model)))
 
     key = jax.random.PRNGKey(args.seed)
-    w = model.initialize(key)
+    key, subkey = jax.random.split(key)
+    w = model.initialize(subkey)
     log = {}
 
     losses = []
@@ -83,7 +84,9 @@ def train(args):
         buf2 = [args.beta2 * m + (1-args.beta2) * d_m**2 for m, d_m in zip(buf2, d_m)]
         d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
         d_w = model.dualize(d_w) if args.post_dualize else d_w
-        w = [(1 - args.wd * args.lr * schedule(step)) * weight for weight in w]
+        if args.wd_power == 0: wd_step_size = schedule(step)  # reproduces AdamW paper
+        else: wd_step_size = (args.lr * schedule(step)) ** args.wd_power  # couples wd to lr in different ways
+        w = [(1 - args.wd * wd_step_size) * weight for weight in w]
         w = model.step(w, d_w, args.lr * schedule(step))
         if args.project:
             w = model.project(w)
@@ -165,6 +168,7 @@ def main():
     parser.add_argument("--d_embed", type=int, default=128, help="Embedding dimension")
     parser.add_argument("--lr", type=float, default=0.1, help="Learning rate")
     parser.add_argument("--wd", type=float, default=0.0, help="Weight decay")
+    parser.add_argument("--wd_power", type=int, default=0, help="Weight decay power")
     parser.add_argument("--blocks", type=int, default=4, help="Number of transformer layers")
     parser.add_argument("--seq_len", type=int, default=256, help="Sequence length")
     parser.add_argument("--num_heads", type=int, default=4, help="Number of attention heads")
