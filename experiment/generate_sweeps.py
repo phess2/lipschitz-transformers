@@ -31,7 +31,7 @@ num_heads = [4]
 seq_len = 256
 zero_init = True
 
-steps = 4001
+steps = 2001
 beta1 = 0.9
 beta2 = 0.95
 schedules = ["linear", "cosine", "none"]   # linear or none
@@ -40,9 +40,9 @@ seeds = [0]
 data = "cifar"
 output_dir = "results"
 
-blocks = 3 if data == "shakespeare" else 3
+blocks = 6 if data == "fineweb" else (3 if data == "shakespeare" else 3)
 
-batch_size = 64 if data == "shakespeare" else 128
+batch_size = 512 if data == "fineweb" else (64 if data == "shakespeare" else 128)
 assert not (data == "cifar" and zero_init == False)
 
 # Create all combinations

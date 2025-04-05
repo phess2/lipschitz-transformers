@@ -61,7 +61,8 @@ def train(args):
     loss_and_grad = jax.jit(jax.value_and_grad(partial(loss, model)))
 
     key = jax.random.PRNGKey(args.seed)
-    w = model.initialize(key)
+    key, subkey = jax.random.split(key)
+    w = model.initialize(subkey)
     log = {}
 
     losses = []
