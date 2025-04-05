@@ -1,16 +1,18 @@
 """
 Takes results path and plots some observable over time, specified at the bottom of the script.
 """
+import os
+os.environ["JAX_PLATFORMS"] = "cpu"
 
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import json
 import dotenv
-import os
+from pathlib import Path
 
 dotenv.load_dotenv()
 root_path = os.getenv('ROOT_PATH')
-path = root_path + "experiment/results-8-lr-sweep-exp-scalar-lr-4xed/embed128_lr0.0160_muon_preFalse_postTrue_projectFalse_manifoldTrue_final_scale0.0_softmax_scale0.0_wd0.0000_steps1001_20250319_070044.json"
+path = Path(root_path) / "experiment/results/shakespeare_embed128_lr0.0010_adam_project_wd0.0000_steps4001_20250404_122942337.json"
 
 with open(path, "r") as f:
     data = json.load(f)
@@ -46,10 +48,12 @@ def plot_observable(tracker_start="q", observable="weight_norm"):
     ax.legend(fontsize=14, framealpha=0.7)
     plt.tight_layout()
     
+    # Create directory if it doesn't exist
+    os.makedirs("scales_plots", exist_ok=True)
     plt.savefig(f"scales_plots/{tracker_start}_{observable}.png", dpi=300)
 
-#for t in ["q", "k", "v", "w", "mlp_in", "mlp_out", "mlp_final"]:
-#    plot_observable(t, "weight_norm")
+for t in ["q", "k", "v", "w", "mlp_in", "mlp_out", "mlp_final"]:
+   plot_observable(t, "weight_norm")
 
-for t in ["softmax", "final_scale"]:
-    plot_observable(t, "exp_scalar")
+# for t in ["softmax", "final_scale"]:
+#     plot_observable(t, "exp_scalar")
