@@ -78,7 +78,7 @@ else:
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
 panel_list = ['optimizer', 'wd_lr_power']
-panel_filter = lambda x: x['schedule'] == 'none'
+panel_filter = lambda x: x['schedule'] == 'linear'
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
 x_string = 'weight_decay'  # width, depth, batch_size         I AM MAKING PLOT GIF WORK
@@ -200,6 +200,9 @@ def plot_frame(cur_step=None, save_path=None):
 
         ax.set_xscale('log')
         ax.xaxis.set_major_locator(LogLocator(numticks=3))
+        # Force rotation for all x-axis labels and adjust their position
+        ax.tick_params(axis='x', rotation=90, labelrotation=90)
+        plt.setp(ax.get_xticklabels(), ha='center')  # Adjust horizontal alignment
 
         # Configure only the leftmost subplot's y-axis, since all are shared anyway
         if i == 0:

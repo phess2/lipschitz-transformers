@@ -196,7 +196,7 @@ def main():
     parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
     parser.add_argument("--data", type=str, default="shakespeare", help="Which dataset to use")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
-    parser.add_argument("--output-dir", type=str, default="results", help="Output directory")
+    parser.add_argument("--output_dir", type=str, default="results", help="Output directory")
     args = parser.parse_args()
 
     args.log_interval = 10 if args.data == "shakespeare" else 100

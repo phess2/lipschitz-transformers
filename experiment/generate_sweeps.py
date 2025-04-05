@@ -7,8 +7,8 @@ import os
 dotenv.load_dotenv()
 
 optimizer_pre_post_lr = [
-    ("adam", False, False, np.logspace(-4, -2.5, 8)),
-    ("muon", False, True,  np.logspace(-2.5, -0.5, 8)), 
+    ("adam", False, False, np.logspace(-4, -2, 8)),
+    ("muon", False, True,  np.logspace(-3, -1, 8)), 
 ]
 
 d_embeds = [128]
