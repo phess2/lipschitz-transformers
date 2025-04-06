@@ -22,7 +22,8 @@ dependencies = [
     "python-dotenv",
     "matplotlib",
     "imageio",
-    "psutil"
+    "psutil",
+    "huggingface_hub"
 ]
 
 [tool.setuptools]
