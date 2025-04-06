@@ -7,8 +7,8 @@ import os
 dotenv.load_dotenv()
 
 optimizer_pre_post_lr = [
-    ("adam", False, False, np.logspace(-4, -2, 8)),
-    ("muon", False, True,  np.logspace(-3, -1, 8)), 
+    ("adam", False, False, np.logspace(-3.5, -1.5, 8)),
+    ("muon", False, True,  np.logspace(-2, 1, 12)), 
 ]
 
 d_embeds = [128]
@@ -20,21 +20,21 @@ softmax_scales = [1] # these get squared
 final_scales = [1] # these are linear
 scales_learnable = [False]
 
-wd_base = np.array([0, 0.01, 0.001, 0.0001])
+wd_base = np.array([0, 0.01, 0.001, 0.0001, 0.1, 0.05, 0.2])
 wd_and_wdlr_power = [
     (wd_base, 0),
-    (wd_base * 100, 1),
-    (wd_base * 10000, 2),
+    (wd_base, 1),
+    (wd_base, 2),
 ] # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
 
 num_heads = [4]
 seq_len = 256
 zero_init = True
 
-steps = 2001
+steps = 10001
 beta1 = 0.9
 beta2 = 0.95
-schedules = ["linear", "cosine", "none"]   # linear or none
+schedules = ["linear", "none", "cosine"]   # linear or none
 
 seeds = [0]
 data = "cifar"

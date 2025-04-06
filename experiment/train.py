@@ -10,6 +10,7 @@ from pathlib import Path
 from functools import partial
 import numpy as np
 import time
+import psutil
 import jax
 import jax.numpy as jnp
 from modula.compound import GPT, OrthogonalGPT, LakerGPT, MLP, ManifoldMLP, LakerMLP
@@ -20,6 +21,16 @@ np.random.seed(0)
 
 from data.shakespeare import load_shakespeare
 from data.cifar10 import load_cifar10
+
+max_log_priority = 1
+def print_log(message, priority=0, indent=0):
+    if priority > max_log_priority: return
+
+    current_time = time.strftime("%H:%M:%S")
+    gpu_memory = jax.device_get(jax.devices()[0].memory_stats()['peak_bytes_in_use']) / 1024**3 if jax.devices() else -1
+    process = psutil.Process()
+    ram_usage = process.memory_info().rss / 1024**3
+    print(f"[{current_time} gpu {gpu_memory:.1f}G ram {ram_usage:.1f}G] {' '*4*indent}{message}")
 
 def load_data(args):
     if args.data == "shakespeare":
@@ -69,7 +80,7 @@ def train(args):
     val_losses = []
     accuracies = []
     num_params = sum(jnp.prod(jnp.array(p.shape)) for p in w).item()
-    print(f"Training with {num_params} parameters")
+    print_log(f"Training with {num_params} parameters")
 
     step = 0
     running_loss = 0.0
@@ -90,8 +101,13 @@ def train(args):
         d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
         d_w = model.dualize(d_w) if args.post_dualize else d_w
 
-        if args.wd_lr_power == 0: wd_step_size = schedule(step) # decoupled weight decay like in the original AdamW paper
-        else: wd_step_size = (args.lr * schedule(step)) ** args.wd_lr_power # control the proportionality of weight decay to lr
+        # Original coupling code (couples learning rate too)
+        # if args.wd_lr_power == 0: wd_step_size = schedule(step) # decoupled weight decay like in the original AdamW paper
+        # else: wd_step_size = (args.lr * schedule(step)) ** args.wd_lr_power # control the proportionality of weight decay to lr
+        
+        # Test coupling code (only couples the schedule step)
+        wd_step_size = schedule(step) ** args.wd_lr_power
+        
         w = [(1 - args.wd * wd_step_size) * weight for weight in w]
 
         w = model.step(w, d_w, args.lr * schedule(step))
@@ -101,7 +117,7 @@ def train(args):
         running_loss += loss.item()
         if step % args.log_interval == 0:
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
-            print(f"Step {step}: loss {interval_loss}")
+            print_log(f"Step {step}: loss {interval_loss}")
             log = model.log(w, grad_w)
             losses.append(float(interval_loss))
             running_loss = 0.0
@@ -119,8 +135,8 @@ def train(args):
                     break
             val_losses.append(float(sum(val_losses_to_avg)/len(val_losses_to_avg)))
             accuracies.append(float(sum(accuracies_to_avg)/len(accuracies_to_avg)))
-            print(f"--> val loss {val_losses[-1]}")
-            print(f"--> val accuracy {accuracies[-1]}")
+            print_log(f"--> val loss {val_losses[-1]}", indent=1)
+            print_log(f"--> val accuracy {accuracies[-1]}", indent=1)
         step += 1
 
         if step >= args.steps:
@@ -168,7 +184,7 @@ def save_results(results, args):
     with open(output_path, 'w') as f:
         json.dump(output, f, indent=2)
     
-    print(f"Results saved to {output_path}")
+    print_log(f"Results saved to {output_path}")
 
 def main():
     parser = argparse.ArgumentParser(description="Modula train script for sweeps")

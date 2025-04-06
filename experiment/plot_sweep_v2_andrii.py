@@ -13,7 +13,7 @@ from collections import defaultdict
 
 
 results_dir = Path('results')
-USE_CACHE = True
+USE_CACHE = False
 
 # Set global font sizes
 plt.rcParams.update({
@@ -46,28 +46,16 @@ if not cache_file.exists() or need_to_rebuild_cache():
     for file in results_dir.glob('*.json'):
         with open(file, 'r') as f:
             data = json.load(f)
-            results.append({
-                'd_embed': data['parameters']['d_embed'],
-                'blocks': data['parameters']['blocks'],
-                'learning_rate': data['parameters']['lr'],
-                'batch_size': data['parameters']['batch_size'],
-                'pre_dualize': data['parameters']['pre_dualize'],
-                'post_dualize': data['parameters']['post_dualize'],
-                'optimizer': data['parameters']['optimizer'],
-                'weight_decay': data['parameters']['wd'],
-                'wd_lr_power': data['parameters']['wd_lr_power'],
-                'data': data['parameters']['data'],
-                'accuracy_history': data['results']['accuracies'],
-                'train_loss_history': data['results']['losses'],
-                'test_loss_history': data['results']['val_losses'],
-                'seed': data['parameters']['seed'],
-                'project': data['parameters']['project'],
-                'manifold': data['parameters']['manifold'],
-                'schedule': data['parameters']['schedule'] if 'schedule' in data['parameters'] else None,
-                'final_scale': data['parameters']['final_scale'],
-                'softmax_scale': data['parameters']['softmax_scale'],
-                'residual_scale': data['parameters']['residual_scale'],
-            })
+            key_renaming = {
+                'wd': 'weight_decay',
+                'lr': 'learning_rate',
+            }
+            result = {}
+            for key in data['parameters']:
+                result[key_renaming.get(key, key)] = data['parameters'][key]
+            for key in data['results']:
+                result[key] = data['results'][key]
+            results.append(result)
     
     # Cache for next time
     with open(cache_file, 'wb') as f:
@@ -78,7 +66,7 @@ else:
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
 panel_list = ['optimizer', 'wd_lr_power']
-panel_filter = lambda x: x['schedule'] == 'none'
+panel_filter = lambda x: x['schedule'] == 'linear'
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
 x_string = 'weight_decay'  # width, depth, batch_size         I AM MAKING PLOT GIF WORK
@@ -99,7 +87,7 @@ loss_string = 'Test' if use_test_loss or use_accuracy else 'Training'
 loss_string_unit = 'Accuracy' if use_accuracy else 'Loss'
 model_string = 'MLP' if data == 'cifar10' else 'Transformer'
 dataset_string = 'CIFAR-10' if data == 'cifar10' else 'Shakespeare'
-history_string = 'accuracy_history' if use_accuracy else ('test_loss_history' if use_test_loss else 'train_loss_history')
+history_string = 'accuracies' if use_accuracy else ('val_losses' if use_test_loss else 'losses')
 
 panel_prefix = {
     'optimizer': lambda x: x.capitalize(),
@@ -120,18 +108,23 @@ ylims = {  # keys are (data, use_accuracy)
 def plot_frame(cur_step=None, save_path=None):
     """Wrap the entire plotting code in one function for GIF mode."""
 
-    # Create single row of subplots, one per panel
+    # Create two rows of subplots, one for lr sweeps, one for training curves
     plot_size = 3.2621 * 2.5
-    fig = plt.figure(figsize=(plot_size, plot_size/5))
-    gs = gridspec.GridSpec(1, len(panels) + 1, 
-                        width_ratios=[1.25]*len(panels) + [0.25])
-    gs.update(wspace=0.25)  # Adjust spacing between subplots
+    fig = plt.figure(figsize=(plot_size, plot_size/2.5))  # Adjusted height for two rows
+    gs = gridspec.GridSpec(2, len(panels) + 1,
+                        width_ratios=[1.25]*len(panels) + [0.25],
+                        height_ratios=[1, 1])  # Equal height for both rows
+    gs.update(wspace=0.25, hspace=0.4)  # Adjust spacing between subplots
 
-    axes = []
+    axes_top = []
+    axes_bottom = []
     for i in range(len(panels)):
-        ax = fig.add_subplot(gs[0, i], sharey=axes[0] if len(axes) > 0 else None)
-        axes.append(ax)
-    axes = np.array(axes)
+        ax_top = fig.add_subplot(gs[0, i], sharey=axes_top[0] if len(axes_top) > 0 else None)
+        ax_bottom = fig.add_subplot(gs[1, i], sharey=axes_bottom[0] if len(axes_bottom) > 0 else None)
+        axes_top.append(ax_top)
+        axes_bottom.append(ax_bottom)
+    axes_top = np.array(axes_top)
+    axes_bottom = np.array(axes_bottom)
 
     # Map x_string values to viridis colors
     unique_x_values = sorted(list(set(r[x_string] for r in results)))
@@ -143,11 +136,14 @@ def plot_frame(cur_step=None, save_path=None):
     all_labels = []
     red_dots = []
 
-    fig.supxlabel('Learning Rate', y=0.02)
-    fig.supylabel(f'Final {loss_string} {loss_string_unit}', x=0.02)
+    #fig.supxlabel('Learning Rate', y=0.02)
+    #fig.supylabel(f'Final {loss_string} {loss_string_unit}', x=0.01)
 
-    for i, panel in enumerate(panels):
-        ax = axes[i]
+    for i, panel in enumerate(panels):    
+        # Store optimal configurations for training curves
+        optimal_configs = []
+
+        ax = axes_top[i]
         # Get unique values for color mapping
         x_values = sorted(list(set(r[x_string] for r in results 
                                if tuple(r[axis] for axis in panel_list) == panel and panel_filter(r))))
@@ -196,13 +192,17 @@ def plot_frame(cur_step=None, save_path=None):
             
             # Store red dot information for later plotting (minimum average loss)
             min_loss_idx = np.argmax(avg_losses) if use_accuracy else np.argmin(avg_losses)
-            red_dots.append((ax, learning_rates[min_loss_idx], avg_losses[min_loss_idx]))
+            optimal_lr = learning_rates[min_loss_idx]
+            optimal_configs.append((panel, x_value, optimal_lr, color))
+            red_dots.append((ax, optimal_lr, avg_losses[min_loss_idx]))
 
         ax.set_xscale('log')
         ax.xaxis.set_major_locator(LogLocator(numticks=3))
         # Force rotation for all x-axis labels and adjust their position
         ax.tick_params(axis='x', rotation=0, labelrotation=0)
         plt.setp(ax.get_xticklabels(), ha='center')  # Adjust horizontal alignment
+
+        ax.set_xlabel('Learning Rate')
 
         # Configure only the leftmost subplot's y-axis, since all are shared anyway
         if i == 0:
@@ -212,6 +212,7 @@ def plot_frame(cur_step=None, save_path=None):
             else:
                 ax.yaxis.set_major_locator(plt.MaxNLocator(4))
             ax.yaxis.set_major_formatter(FuncFormatter(format_fn))
+            ax.set_ylabel(f'Final {loss_string} {loss_string_unit}')
         else:
             # Hide y-axis labels for all but the leftmost subplot
             ax.tick_params(axis='y', which='both', left=False, labelleft=False)
@@ -229,6 +230,48 @@ def plot_frame(cur_step=None, save_path=None):
         # Set aspect ratio to be square
         ax.set_box_aspect(1)
     
+        # Plot training curves in bottom row
+        for red_dot_i, ((panel, optimal_x, optimal_lr, color)) in enumerate(optimal_configs):
+            ax = axes_bottom[i]
+            
+            # Get results for the optimal configuration
+            optimal_results = [r for r in results 
+                            if r[x_string] == optimal_x 
+                            and tuple(r[axis] for axis in panel_list) == panel
+                            and r['learning_rate'] == optimal_lr
+                            and panel_filter(r)]
+            
+            # Plot training curves for all seeds
+            for r in optimal_results:
+                history = r[history_string]
+                if use_accuracy:
+                    history = [100 * h for h in history]
+                steps = np.arange(len(history)) * r['val_interval']
+                ax.plot(steps, history, alpha=0.5, linewidth=1)
+            
+            # Plot mean curve
+            mean_history = np.mean([r[history_string] for r in optimal_results], axis=0)
+            if use_accuracy:
+                mean_history = 100 * mean_history
+            ax.plot(steps, mean_history, linewidth=2, label=f'{x_string} {x_value}', color=color)
+            
+            ax.set_xlabel('Training Step')
+            if i == 0:  # Only leftmost plot needs y-label
+                ax.set_ylabel(f'{loss_string} {loss_string_unit}')
+            else:
+                # Hide y-axis labels for all but the leftmost subplot
+                ax.tick_params(axis='y', which='both', left=False, labelleft=False)
+            
+            ax.grid(True)
+            
+            # Match y-axis scaling from top plot
+            if not use_accuracy:
+                ax.set_yscale('log')
+            ax.set_ylim(*ylims[(data, use_accuracy)])
+
+            # plot red dot at the end of the mean curve
+            ax.plot(steps[-1], mean_history[-1], 'ro', markersize=3, zorder=10)
+
     # all red dots after all lines have been drawn
     for ax, x, y in red_dots:
         ax.plot(x, y, 'ro', markersize=3, zorder=10)
