@@ -22,3 +22,4 @@ experiment/result*
 experiment/sweep_configs
 experiment/chrysalis
 experiment/scales_plots
+experiment/.env

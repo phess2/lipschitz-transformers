@@ -12,7 +12,8 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter, LogLocator
 from collections import defaultdict
 
 
-results_dir = Path('results-10-fineweb')
+results_dir = Path('results')
+USE_CACHE = False
 
 # Set global font sizes
 plt.rcParams.update({
@@ -26,7 +27,7 @@ plt.rcParams.update({
 
 # Custom formatter to remove .0
 def format_fn(x, p):
-    if data == 'cifar':
+    if data == 'cifar10':
         return f"{x:.1e}" # scientific notation
     else:
         return f"{int(x)}" if x == int(x) else f"{x:.1f}"
@@ -34,6 +35,8 @@ def format_fn(x, p):
 # Cache the results to speed up plotting on the same data
 cache_file = results_dir / 'cached_results.pkl'
 def need_to_rebuild_cache():
+    if not USE_CACHE:
+        return True
     cache_mtime = cache_file.stat().st_mtime
     json_files = list(results_dir.glob('*.json'))
     return any(f.stat().st_mtime > cache_mtime for f in json_files)
@@ -52,7 +55,7 @@ if not cache_file.exists() or need_to_rebuild_cache():
                 'post_dualize': data['parameters']['post_dualize'],
                 'optimizer': data['parameters']['optimizer'],
                 'weight_decay': data['parameters']['wd'],
-                'weight_decay_power': data['parameters']['wd_lr_power'],
+                'wd_lr_power': data['parameters']['wd_lr_power'],
                 'data': data['parameters']['data'],
                 'accuracy_history': data['results']['accuracies'],
                 'train_loss_history': data['results']['losses'],
@@ -74,25 +77,22 @@ else:
         results = pickle.load(f)
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
-panel_list = ['optimizer']
-panel_filter = lambda x: True
+panel_list = ['optimizer', 'wd_lr_power']
+panel_filter = lambda x: x['schedule'] == 'linear'
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
-x_string = 'weight_decay'  # width, depth, batch_size
+x_string = 'weight_decay'  # width, depth, batch_size         I AM MAKING PLOT GIF WORK
 x_string_title = 'Weight Decay'  # Width, Depth, Batch Size
-data = results[0]['data']
+data = 'cifar10'
 
 use_test_loss = True
-use_accuracy = False
-plot_last = False
+use_accuracy = True
+aggregator = lambda x: x[-1]   # this is the brutal honesty option
+#aggregator = lambda x: max(x) if use_accuracy else min(x)   # this one papers over overfitting
 
-aggregator_last = lambda x: x[-1]   # this is the brutal honesty option
-aggregator_smooth = lambda x: max(x) if use_accuracy else min(x)   # this one papers over overfitting
-aggregator = aggregator_last if not plot_last else aggregator_smooth
-
-GIF_MODE = True
+GIF_MODE = False
 FPS = 5
-STEP_INCREMENT = 1 if use_test_loss or use_accuracy else 10  # we only record data every 100 steps anyway, unless it's training loss
+STEP_INCREMENT = 1 if use_test_loss or use_accuracy else 20  # we only record data every 100 steps anyway, unless it's training loss
 OUTPUT_DIR = Path('gif_frames')
 
 loss_string = 'Test' if use_test_loss or use_accuracy else 'Training'
@@ -106,17 +106,15 @@ panel_prefix = {
     'pre_dualize': lambda x: 'Pre' if x else '',
     'project': lambda x: 'Proj' if x else 'NoProj',
     'weight_decay': lambda x: f'wd{x:.2f}',
-    'weight_decay_power': lambda x: f'wdpow{int(x)}',
     'final_scale': lambda x: f'fs{int(x)}',
+    'wd_lr_power': lambda x: f'wdlrp{x:.2f}',
 }
 
 ylims = {  # keys are (data, use_accuracy)
     ('shakespeare', False): (1, 3),
     ('shakespeare', True): (20, 70),
-    ('cifar', False): (1e-3, 2) if not use_test_loss else (1, 2),
-    ('cifar', True): (40, 60),
-    ('fineweb', False): (3, 8),
-    ('fineweb', True): (40, 60),
+    ('cifar10', False): (1e-1, 2.5),
+    ('cifar10', True): (10, 60),
 }
 
 def plot_frame(cur_step=None, save_path=None):
@@ -135,13 +133,12 @@ def plot_frame(cur_step=None, save_path=None):
         axes.append(ax)
     axes = np.array(axes)
 
-    # Get unique values for color bar
-    color_values = sorted(list(set(r[x_string] for r in results)))
-    color_map = plt.cm.viridis(np.linspace(0, 1, len(color_values)))
-    color_dict = {val: color for val, color in zip(color_values, color_map)}
+    # Map x_string values to viridis colors
+    unique_x_values = sorted(list(set(r[x_string] for r in results)))
+    color_values = {val: plt.cm.viridis(i/len(unique_x_values)) 
+                   for i, val in enumerate(unique_x_values)}
 
     # Store lines for the legend and red dots for the extrema losses
-    all_x_values = []
     all_lines = []
     all_labels = []
     red_dots = []
@@ -150,14 +147,14 @@ def plot_frame(cur_step=None, save_path=None):
     fig.supylabel(f'Final {loss_string} {loss_string_unit}', x=0.02)
 
     for i, panel in enumerate(panels):
-        ax = axes[i] if len(panels) > 1 else axes
-        # Get unique values for this panel
+        ax = axes[i]
+        # Get unique values for color mapping
         x_values = sorted(list(set(r[x_string] for r in results 
                                if tuple(r[axis] for axis in panel_list) == panel and panel_filter(r))))
+        colors = [color_values[x_value] for x_value in x_values]
         
         # Plot sweep of final training loss vs learning rate for each color bar variable
-        for x_value in x_values:
-            color = color_dict[x_value]
+        for x_value, color in zip(x_values, colors):
             # Get all results that match the current panel and color bar variable
             x_value_results = [r for r in results 
                              if r[x_string] == x_value 
@@ -192,18 +189,20 @@ def plot_frame(cur_step=None, save_path=None):
             line, = ax.plot(learning_rates, avg_losses, '-', color=color, 
                            linewidth=3, markersize=4)
             
-            # Store lines/labels for any new x_value
-            if x_value not in all_x_values:
+            # Only store lines/labels for unique lines
+            if f'{x_string} {x_value}' not in all_labels:
                 all_lines.append(line)
                 all_labels.append(f'{x_string} {x_value}')
-                all_x_values.append(x_value)
-
+            
             # Store red dot information for later plotting (minimum average loss)
             min_loss_idx = np.argmax(avg_losses) if use_accuracy else np.argmin(avg_losses)
             red_dots.append((ax, learning_rates[min_loss_idx], avg_losses[min_loss_idx]))
 
         ax.set_xscale('log')
         ax.xaxis.set_major_locator(LogLocator(numticks=3))
+        # Force rotation for all x-axis labels and adjust their position
+        ax.tick_params(axis='x', rotation=90, labelrotation=90)
+        plt.setp(ax.get_xticklabels(), ha='center')  # Adjust horizontal alignment
 
         # Configure only the leftmost subplot's y-axis, since all are shared anyway
         if i == 0:

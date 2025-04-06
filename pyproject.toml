@@ -17,10 +17,11 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "jax[cuda12]",
+    "jax[cuda12_pip]>=0.4.30",
     "requests",
     "python-dotenv",
-    "matplotlib"
+    "matplotlib",
+    "imageio
 ]
 
 [tool.setuptools]

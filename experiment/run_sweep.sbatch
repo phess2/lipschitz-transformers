@@ -35,7 +35,7 @@ with open('sweep_configs/parameter_grid.json', 'r') as f:
         f'--d_embed {params[$i][\"d_embed\"]} '
         f'--lr {params[$i][\"lr\"]} '
         f'--wd {params[$i][\"wd\"]} '
-        f'--wd_power {params[$i][\"wd_power\"]} '
+        f'--wd_lr_power {params[$i][\"wd_power\"]} '
         f'--blocks {params[$i][\"blocks\"]} '
         f'--seq_len {params[$i][\"seq_len\"]} '
         f'--num_heads {params[$i][\"num_heads\"]} '
@@ -55,7 +55,7 @@ with open('sweep_configs/parameter_grid.json', 'r') as f:
         f'--schedule {params[$i][\"schedule\"]} '
         f'--steps {params[$i][\"steps\"]} '
         f'--data {params[$i][\"data\"]} '
-        f'--output-dir {params[$i][\"output_dir\"]} '
+        f'--output_dir {params[$i][\"output_dir\"]} '
     )
 ")
 
