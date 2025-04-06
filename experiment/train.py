@@ -20,9 +20,12 @@ np.random.seed(0)
 
 from data.shakespeare import load_shakespeare
 from data.cifar10 import load_cifar10
+from data.fineweb import load_fineweb
 
 def load_data(args):
-    if args.data == "shakespeare":
+    if args.data == "fineweb":
+        data = load_fineweb(args.seq_len, args.batch_size)
+    elif args.data == "shakespeare":
         data = load_shakespeare(args.seq_len, args.batch_size)
     elif args.data == "cifar":
         data = load_cifar10(args.batch_size)
@@ -31,8 +34,8 @@ def load_data(args):
     return data["train_loader"], data["test_loader"], data["loss"]
 
 def create_model(args):
-    if args.data == "shakespeare":
-        kwargs = {"vocab_size": 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "residual_scale": args.residual_scale, "scales_learnable": args.scales_learnable, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init}
+    if args.data == "fineweb" or args.data == "shakespeare":
+        kwargs = {"vocab_size": 50304 if args.data == "fineweb" else 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "residual_scale": args.residual_scale, "scales_learnable": args.scales_learnable, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init}
         if args.manifold:
             return OrthogonalGPT(**kwargs)
         elif args.project:
@@ -90,11 +93,11 @@ def train(args):
         w = model.step(w, d_w, args.lr * schedule(step))
         if args.project:
             w = model.project(w)
+        print(f"Step:{step}/{args.steps} train_loss:{loss:.4f}")
 
         running_loss += loss.item()
         if step % args.log_interval == 0:
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
-            print(f"Step {step}: loss {interval_loss}")
             log = model.log(w, grad_w)
             losses.append(float(interval_loss))
             running_loss = 0.0
@@ -104,16 +107,16 @@ def train(args):
             val_losses_to_avg = []
             for val_inputs, val_targets in val_loader:
                 loss, _ = loss_and_grad(w, val_inputs, val_targets)
-                val_losses_to_avg.append(float(loss))
                 logits = model(val_inputs, w)
+                val_losses_to_avg.append(float(loss))
                 preds = jnp.argmax(logits, axis=-1)
                 accuracies_to_avg.append(jnp.mean(preds == val_targets))
                 if len(val_losses_to_avg) >= args.val_iters:
                     break
             val_losses.append(float(sum(val_losses_to_avg)/len(val_losses_to_avg)))
             accuracies.append(float(sum(accuracies_to_avg)/len(accuracies_to_avg)))
-            print(f"--> val loss {val_losses[-1]}")
-            print(f"--> val accuracy {accuracies[-1]}")
+            print(f"Step:{step}/{args.steps} val_loss:{val_losses[-1]:.4f} val_acc:{accuracies[-1]:.4f}")
+
         step += 1
 
         if step >= args.steps:
@@ -192,8 +195,8 @@ def main():
     parser.add_argument("--output-dir", type=str, default="results", help="Output directory")
     args = parser.parse_args()
 
-    args.log_interval = 10 if args.data == "shakespeare" else 100
-    args.val_interval = 100 if args.data == "shakespeare" else 500
+    args.log_interval = 10 if args.data == "fineweb" else (10 if args.data == "shakespeare" else 100)
+    args.val_interval = 50 if args.data == "fineweb" else (100 if args.data == "shakespeare" else 500)
     args.val_iters = 50
     
     results = train(args)    

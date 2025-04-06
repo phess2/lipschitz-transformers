@@ -14,10 +14,10 @@ optimizer_pre_post_lr_wd = [
     #("sgd", False, False, np.logspace(-3, -1, 8), [0]),  # SGD
     #("muon", False, True,  np.logspace(-1, 0.5, 8), [0.01]),  # Muon
     #("muon", True, False,  np.logspace(-0.5, 1.5, 8), [0.01]),
-    ("muon", False, True,  np.logspace(-1.5, -0.5, 4), [0.1, 0]),#np.logspace(-2, 0, 4), [0]),
+    ("muon", False, True,  np.logspace(-1.5, -0.5, 4), [0]),#np.logspace(-2, 0, 4), [0]),
     #("muon", True, True,   np.logspace(-1, 0.5, 8), [0.01]),
 ]
-d_embeds = [128]
+d_embeds = [32]
 project = [False]
 manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 
@@ -25,11 +25,7 @@ residual_scales = [1]#[1, 2]  # (1 - a/depth) * x + (a/depth) * block(x)
 softmax_scales = [1]#[1, 4, 8] # these get squared
 final_scales = [1]#[1, 8, 64, 512] # these are linear
 scales_learnable = [False]
-weight_decay_lr_power = [1, 2]  # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
-
-num_heads = [4]
-seq_len = 256
-zero_init = True
+weight_decay_lr_power = [1]  # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
 
 steps = 2001
 beta1 = 0.9
@@ -37,12 +33,15 @@ beta2 = 0.95
 schedule = "linear"   # linear or none
 
 seeds = [0]
-data = "cifar"
+data = "fineweb"      # fineweb, shakespeare, cifar
 output_dir = "results"
 
 blocks = 6 if data == "fineweb" else (3 if data == "shakespeare" else 3)
+seq_len = 1024 if data == "fineweb" else 256
+num_heads = [8] if data == "fineweb" else [4]
+zero_init = True
 
-batch_size = 512 if data == "fineweb" else (64 if data == "shakespeare" else 128)
+batch_size = 32 if data == "fineweb" else (64 if data == "shakespeare" else 128)
 assert not (data == "cifar" and zero_init == False)
 
 # Create all combinations
