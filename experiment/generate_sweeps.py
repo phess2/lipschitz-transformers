@@ -8,11 +8,11 @@ dotenv.load_dotenv()
 
 optimizer_pre_post_lr = [
     #("adam", False, False, np.logspace(-4, -2, 8)),
-    ("muon", False, True,  np.logspace(-1, -0.5, 4)), 
+    ("muon", False, True,  np.logspace(-2, 0, 4)), 
 ]
 
-d_embeds = [128]
-project = [False]
+d_embeds = [64]
+project = ["none", "laker"]  # none, laker, orthogonal
 manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
@@ -20,30 +20,34 @@ softmax_scales = [1] # these get squared
 final_scales = [1] # these are linear
 scales_learnable = [False]
 
-wd_base = np.array([0, 0.01, 0.001, 0.0001])
+wd_base = np.array([0, 0.0001])
 wd_and_wdlr_power = [
     #(wd_base, 0),
-    #(wd_base * 100, 1),
+    ([0, 0.02, 0.1], 1)#(wd_base * 100, 1),
     #(wd_base * 10000, 2),
-    ([0], 0)
 ] # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
 
-steps = 201
+steps = 2000
 beta1 = 0.9
 beta2 = 0.95
 schedules = ["linear"]#, "cosine", "none"]   # linear or none
 
 seeds = [0]
-data = "fineweb"      # fineweb, shakespeare, cifar
+data = "shakespeare"      # fineweb, shakespeare, cifar
 output_dir = "results"
 
-blocks = 6 if data == "fineweb" else (3 if data == "shakespeare" else 3)
+blocks = 12 if data == "fineweb" else (3 if data == "shakespeare" else 3)
 seq_len = 1024 if data == "fineweb" else 256
-num_heads = [8] if data == "fineweb" else [4]
+num_heads = [12] if data == "fineweb" else [4]
 zero_init = True
 
-batch_size = 32 if data == "fineweb" else (64 if data == "shakespeare" else 128)
+batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 128)
+accum_steps = 8 if data == "fineweb" else 1
 assert not (data == "cifar" and zero_init == False)
+
+log_interval = 10 if data == "fineweb" else (10 if data == "shakespeare" else 100)
+val_interval = 100 if data == "fineweb" else (100 if data == "shakespeare" else 500)
+val_iters = 200 if data == "fineweb" else 50
 
 # Create all combinations
 combinations = []
@@ -79,6 +83,7 @@ for optimizer, pre, post, lrs in optimizer_pre_post_lr:
                                                         'beta1': beta1,
                                                         'beta2': beta2,
                                                         'batch_size': batch_size,
+                                                        'accum_steps': accum_steps,
                                                         'zero_init': zero_init,
                                                         'project': proj,
                                                         'manifold': manifold,
@@ -86,6 +91,9 @@ for optimizer, pre, post, lrs in optimizer_pre_post_lr:
                                                         'schedule': schedule,
                                                         'data': data,
                                                         'seed': seed,
+                                                        'log_interval': log_interval,
+                                                        'val_interval': val_interval,
+                                                        'val_iters': val_iters,
                                                         'output_dir': output_dir,
                                                     })
 

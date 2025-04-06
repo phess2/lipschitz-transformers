@@ -12,7 +12,7 @@ from pathlib import Path
 
 dotenv.load_dotenv()
 root_path = os.getenv('ROOT_PATH')
-path = Path(root_path) / "experiment/results/shakespeare_embed128_lr0.0010_adam_project_wd0.0000_steps4001_20250404_122942337.json"
+path = Path(root_path) / "experiment/results/fineweb_embed672_lr0.0229_muon_post_wd0.0100_steps4001_20250406_034004758.json"
 
 with open(path, "r") as f:
     data = json.load(f)
@@ -40,7 +40,7 @@ def plot_observable(tracker_start="q", observable="weight_norm"):
     
     ax.set_xlabel("Training steps", fontsize=16)
     ax.set_ylabel(observable, fontsize=16)
-    ax.set_title(f"{tracker_start} {observable} over time (manifold constrained)", fontsize=18)
+    ax.set_title(f"{tracker_start} {observable} over time", fontsize=18)
     
     ax.grid(True, linestyle='--', alpha=0.5)
     ax.axhline(y=0, color="k", linestyle="-", alpha=0.2, linewidth=1)
