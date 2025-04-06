@@ -10,6 +10,7 @@ from pathlib import Path
 from functools import partial
 import numpy as np
 import time
+import psutil
 import jax
 import jax.numpy as jnp
 from modula.compound import GPT, MLP, OrthogonalGPT, ManifoldMLP
@@ -21,6 +22,16 @@ np.random.seed(0)
 from data.shakespeare import load_shakespeare
 from data.cifar10 import load_cifar10
 from data.fineweb import load_fineweb
+
+max_log_priority = 1
+def print_log(message, priority=0, indent=0):
+    if priority > max_log_priority: return
+
+    current_time = time.strftime("%H:%M:%S")
+    gpu_memory = jax.device_get(jax.devices()[0].memory_stats()['peak_bytes_in_use']) / 1024**3 if jax.devices() else -1
+    process = psutil.Process()
+    ram_usage = process.memory_info().rss / 1024**3
+    print(f"[{current_time} gpu {gpu_memory:.1f}G ram {ram_usage:.1f}G] {' '*4*indent}{message}")
 
 def load_data(args):
     if args.data == "fineweb":
@@ -62,7 +73,7 @@ def train(args):
     val_losses = []
     accuracies = []
     num_params = sum(jnp.prod(jnp.array(p.shape)) for p in w).item()
-    print(f"Training with {num_params} parameters")
+    print_log(f"Training with {num_params} parameters")
 
     step = 0
     accum_step = 0
@@ -101,14 +112,19 @@ def train(args):
         d_w = jax.tree.map(lambda m1, m2: m1 / (jnp.sqrt(m2) + 1e-12), buf1, buf2) if args.optimizer == "adam" else buf1
         d_w = model.dualize(d_w) if args.post_dualize else d_w
 
-        if args.wd_lr_power == 0: wd_step_size = schedule(step) # decoupled weight decay like in the original AdamW paper
-        else: wd_step_size = (args.lr * schedule(step)) ** args.wd_lr_power # control the proportionality of weight decay to lr
+        # Original coupling code (couples initial learning rate too)
+        # if args.wd_lr_power == 0: wd_step_size = schedule(step) # decoupled weight decay like in the original AdamW paper
+        # else: wd_step_size = (args.lr * schedule(step)) ** args.wd_lr_power # control the proportionality of weight decay to lr
+        
+        # Test coupling code (only couples the schedule step)
+        wd_step_size = schedule(step) ** args.wd_lr_power
+        
         w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
 
         w = model.step(w, d_w, args.lr * schedule(step))
         if args.project != "none":
             w = model.project(w)
-        print(f"Step:{step}/{args.steps} train_loss:{loss:.4f}")
+        print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f}")
 
         running_loss += loss
         if step % args.log_interval == 0:
@@ -132,7 +148,7 @@ def train(args):
                     break
             val_losses.append(float(val_loss_sum / val_step))
             accuracies.append(float(val_acc_sum / val_step))
-            print(f"Step:{step}/{args.steps} val_loss:{val_losses[-1]:.4f} val_acc:{accuracies[-1]:.4f}")
+            print_log(f"Step:{step}/{args.steps} val_loss:{val_losses[-1]:.4f} val_acc:{accuracies[-1]:.4f}", indent=1)
 
         if step >= args.steps:
             break
@@ -177,7 +193,7 @@ def save_results(results, args):
     with open(output_path, 'w') as f:
         json.dump(output, f, indent=2)
     
-    print(f"Results saved to {output_path}")
+    print_log(f"Results saved to {output_path}")
 
 def main():
     parser = argparse.ArgumentParser(description="Modula train script for sweeps")
