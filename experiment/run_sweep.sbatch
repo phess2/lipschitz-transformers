@@ -25,40 +25,29 @@ mkdir -p results
 # Activate venv environment
 source ../.modula/bin/activate
 
+# Number of jobs to run in parallel
+jobs_in_parallel=2
+echo "Running $jobs_in_parallel jobs:"
+
 # Get the parameters for this job from the parameter grid
 export i=$SLURM_ARRAY_TASK_ID
-params=$(python -c "
+
+for j in $(seq 0 $(($jobs_in_parallel-1))); do
+    params=$(python -c "
 import json
 with open('sweep_configs/parameter_grid.json', 'r') as f:
-    params = json.load(f)
+    idx = $i * $jobs_in_parallel + $j
+    params = json.load(f)[idx]
     print(
-        f'--d_embed {params[$i][\"d_embed\"]} '
-        f'--lr {params[$i][\"lr\"]} '
-        f'--wd {params[$i][\"wd\"]} '
-        f'--wd_lr_power {params[$i][\"wd_power\"]} '
-        f'--blocks {params[$i][\"blocks\"]} '
-        f'--seq_len {params[$i][\"seq_len\"]} '
-        f'--num_heads {params[$i][\"num_heads\"]} '
-        f'--softmax_scale {params[$i][\"softmax_scale\"]} '
-        f'--final_scale {params[$i][\"final_scale\"]} '
-        f'--residual_scale {params[$i][\"residual_scale\"]} '
-        f'--scales_learnable {params[$i][\"scales_learnable\"]} '
-        f'--optimizer {params[$i][\"optimizer\"]} '
-        f'--pre_dualize {params[$i][\"pre_dualize\"]} '
-        f'--post_dualize {params[$i][\"post_dualize\"]} '
-        f'--beta1 {params[$i][\"beta1\"]} '
-        f'--beta2 {params[$i][\"beta2\"]} '
-        f'--batch_size {params[$i][\"batch_size\"]} '
-        f'--zero_init {params[$i][\"zero_init\"]} '
-        f'--project {params[$i][\"project\"]} '
-        f'--manifold {params[$i][\"manifold\"]} '
-        f'--schedule {params[$i][\"schedule\"]} '
-        f'--steps {params[$i][\"steps\"]} '
-        f'--data {params[$i][\"data\"]} '
-        f'--output_dir {params[$i][\"output_dir\"]} '
+        ' '.join([
+            f'--{key} {params[key]}' 
+            for key in params    # iterate over all keys in the dictionary and pass them as arguments to the script
+        ])
     )
 ")
-
-# Run the training script with these parameters
-echo $params
-python train.py $params
+    echo ""
+    echo "--------------------------------"
+    echo "Job $((j+1)): $params"
+    python train.py $params &
+    wait
+done
