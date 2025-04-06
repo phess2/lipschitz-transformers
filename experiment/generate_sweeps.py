@@ -37,12 +37,15 @@ beta2 = 0.95
 schedules = ["linear", "none", "cosine"]   # linear or none
 
 seeds = [0]
-data = "cifar"
+data = "fineweb"      # fineweb, shakespeare, cifar
 output_dir = "results"
 
 blocks = 6 if data == "fineweb" else (3 if data == "shakespeare" else 3)
+seq_len = 1024 if data == "fineweb" else 256
+num_heads = [8] if data == "fineweb" else [4]
+zero_init = True
 
-batch_size = 512 if data == "fineweb" else (64 if data == "shakespeare" else 128)
+batch_size = 32 if data == "fineweb" else (64 if data == "shakespeare" else 128)
 assert not (data == "cifar" and zero_init == False)
 
 # Create all combinations

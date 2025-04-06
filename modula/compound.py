@@ -38,7 +38,7 @@ def GPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, blocks_mas
     blocks = Identity()
     for i in range(num_blocks):
         att = Attention(num_heads, d_embed, d_query, d_value, zero_init=zero_init, layer_idx=i)
-        mlp = Linear(d_embed, 4*d_embed, tracker=f"mlp_out{i}") @ GeLU() @ Linear(4*d_embed, d_embed, tracker=f"mlp_in{i}")
+        mlp = Linear(d_embed, 4*d_embed, zero_init=zero_init, tracker=f"mlp_out{i}") @ GeLU() @ Linear(4*d_embed, d_embed, tracker=f"mlp_in{i}")
         att_block = (1-residual_scale/(2*num_blocks)) * Identity() + residual_scale/(2*num_blocks) * att
         mlp_block = (1-residual_scale/(2*num_blocks)) * Identity() + residual_scale/(2*num_blocks) * mlp
         blocks @= mlp_block @ att_block
@@ -99,7 +99,7 @@ def LakerGPT(vocab_size, num_heads, d_embed, d_query, d_value, num_blocks, block
     blocks = Identity()
     for i in range(num_blocks):
         att = LakerAttention(num_heads, d_embed, d_query, d_value, softmax_scale, scales_learnable, zero_init=zero_init, layer_idx=i)
-        mlp = LakerLinear(d_embed, d_embed, tracker=f"mlp_out{i}") @ GeLU() @ LakerLinear(d_embed, d_embed, tracker=f"mlp_in{i}")
+        mlp = LakerLinear(d_embed, d_embed, zero_init=zero_init, tracker=f"mlp_out{i}") @ GeLU() @ LakerLinear(d_embed, d_embed, tracker=f"mlp_in{i}")
         att_block = (1-residual_scale/(2*num_blocks)) * Identity() + residual_scale/(2*num_blocks) * att
         mlp_block = (1-residual_scale/(2*num_blocks)) * Identity() + residual_scale/(2*num_blocks) * mlp
         blocks @= mlp_block @ att_block

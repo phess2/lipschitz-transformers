@@ -12,7 +12,7 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter, LogLocator
 from collections import defaultdict
 
 
-results_dir = Path('results')
+results_dir = Path('results-10-fineweb')
 
 # Set global font sizes
 plt.rcParams.update({
@@ -52,7 +52,7 @@ if not cache_file.exists() or need_to_rebuild_cache():
                 'post_dualize': data['parameters']['post_dualize'],
                 'optimizer': data['parameters']['optimizer'],
                 'weight_decay': data['parameters']['wd'],
-                'weight_decay_power': data['parameters']['wd_power'],
+                'weight_decay_power': data['parameters']['wd_lr_power'],
                 'data': data['parameters']['data'],
                 'accuracy_history': data['results']['accuracies'],
                 'train_loss_history': data['results']['losses'],
@@ -74,7 +74,7 @@ else:
         results = pickle.load(f)
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
-panel_list = ['optimizer', 'weight_decay_power']
+panel_list = ['optimizer']
 panel_filter = lambda x: True
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
@@ -115,6 +115,8 @@ ylims = {  # keys are (data, use_accuracy)
     ('shakespeare', True): (20, 70),
     ('cifar', False): (1e-3, 2) if not use_test_loss else (1, 2),
     ('cifar', True): (40, 60),
+    ('fineweb', False): (3, 8),
+    ('fineweb', True): (40, 60),
 }
 
 def plot_frame(cur_step=None, save_path=None):

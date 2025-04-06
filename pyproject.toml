@@ -21,7 +21,8 @@ dependencies = [
     "requests",
     "python-dotenv",
     "matplotlib",
-    "imageio
+    "imageio",
+    "psutil"
 ]
 
 [tool.setuptools]
