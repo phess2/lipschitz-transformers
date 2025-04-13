@@ -1,5 +1,6 @@
 .DS_Store
 
+.modula
 modula.egg-info/
 modula/__pycache__/
 

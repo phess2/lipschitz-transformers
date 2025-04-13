@@ -89,8 +89,14 @@ class Linear(Atom):
         
         if "weight_norm" not in self.log_info:
             self.log_info["weight_norm"] = []
-
         self.log_info["weight_norm"].append(jnp.linalg.norm(w[0], ord=2))
+
+        
+        if "cos_angle_w_with_d_w" not in self.log_info:
+            self.log_info["cos_angle_w_with_d_w"] = []
+        self.log_info["cos_angle_w_with_d_w"].append(
+            jnp.sum(w[0].flatten() * grad_w[0].flatten()) / (jnp.linalg.norm(w[0]) * jnp.linalg.norm(grad_w[0]))
+        )
         return {self.tracker: self.log_info}
 
 

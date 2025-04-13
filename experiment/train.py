@@ -121,7 +121,7 @@ def train(args):
         running_loss += loss.item()
         if step % args.log_interval == 0:
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
-            log = model.log(w, grad_w)
+            log = model.log(w, d_w)
             losses.append(float(interval_loss))
             running_loss = 0.0
         

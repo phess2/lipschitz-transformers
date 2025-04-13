@@ -9,7 +9,14 @@ dotenv.load_dotenv()
 optimizer_pre_post_lr = [
     ("adam", False, False, np.logspace(-3.5, -1.5, 8)),
     ("muon", False, True,  np.logspace(-2, 1, 12)), 
+    ("muon", False, True,  np.logspace(-3, -2, 4)), 
 ]
+
+# just for extending the range a bit
+# optimizer_pre_post_lr = [
+#     #("adam", False, False, np.logspace(-3.5, -1.5, 8)),
+#     ("muon", False, True,  np.logspace(-3, -2, 4)), 
+# ]
 
 d_embeds = [128]
 project = [False]
@@ -34,10 +41,10 @@ zero_init = True
 steps = 10001
 beta1 = 0.9
 beta2 = 0.95
-schedules = ["linear", "none", "cosine"]   # linear or none
+schedules = ["linear", "none", "cosine"]      # linear or none
 
 seeds = [0]
-data = "fineweb"      # fineweb, shakespeare, cifar
+data = "cifar"      # fineweb, shakespeare, cifar
 output_dir = "results"
 
 blocks = 6 if data == "fineweb" else (3 if data == "shakespeare" else 3)
