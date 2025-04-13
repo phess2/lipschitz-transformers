@@ -12,7 +12,7 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter, LogLocator
 from collections import defaultdict
 
 
-results_dir = Path('results-10-fineweb')
+results_dir = Path('results')
 
 # Set global font sizes
 plt.rcParams.update({
@@ -60,7 +60,7 @@ if not cache_file.exists() or need_to_rebuild_cache():
                 'seed': data['parameters']['seed'],
                 'project': data['parameters']['project'],
                 'manifold': data['parameters']['manifold'],
-                'schedule': data['parameters']['schedule'] if 'schedule' in data['parameters'] else None,
+                'schedule': data['parameters']['schedule'],
                 'final_scale': data['parameters']['final_scale'],
                 'softmax_scale': data['parameters']['softmax_scale'],
                 'residual_scale': data['parameters']['residual_scale'],
@@ -74,7 +74,7 @@ else:
         results = pickle.load(f)
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
-panel_list = ['optimizer']
+panel_list = ['optimizer', 'project']
 panel_filter = lambda x: True
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
@@ -82,8 +82,8 @@ x_string = 'weight_decay'  # width, depth, batch_size
 x_string_title = 'Weight Decay'  # Width, Depth, Batch Size
 data = results[0]['data']
 
-use_test_loss = True
-use_accuracy = False
+use_test_loss = False
+use_accuracy = True
 plot_last = False
 
 aggregator_last = lambda x: x[-1]   # this is the brutal honesty option
@@ -104,7 +104,7 @@ history_string = 'accuracy_history' if use_accuracy else ('test_loss_history' if
 panel_prefix = {
     'optimizer': lambda x: x.capitalize(),
     'pre_dualize': lambda x: 'Pre' if x else '',
-    'project': lambda x: 'Proj' if x else 'NoProj',
+    'project': lambda x: x,#'proj=' + x,
     'weight_decay': lambda x: f'wd{x:.2f}',
     'weight_decay_power': lambda x: f'wdpow{int(x)}',
     'final_scale': lambda x: f'fs{int(x)}',

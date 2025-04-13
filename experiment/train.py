@@ -13,9 +13,9 @@ import time
 import psutil
 import jax
 import jax.numpy as jnp
-from modula.compound import GPT, OrthogonalGPT, LakerGPT, MLP, ManifoldMLP, LakerMLP
+from modula.compound import GPT, MLP, OrthogonalGPT, ManifoldMLP
 from modula.bond import Flatten
-from modula.atom import Scalar
+from modula.atom import Scalar, orthogonalize, laker_special_sauce, laker_pure_svd
 
 np.random.seed(0)
 
@@ -44,24 +44,27 @@ def load_data(args):
         raise ValueError(f"Unknown dataset: {args.data}")
     return data["train_loader"], data["test_loader"], data["loss"]
 
+project_str_to_fn = {
+    "none": lambda x: x,
+    "orthogonal": orthogonalize,
+    "laker": laker_special_sauce,
+    "laker_pure_svd": laker_pure_svd,
+}
+
 def create_model(args):
+    kwargs = args.copy()
+
+    # set out the dictionary for which project function to apply for each layer
+    project_dict = json.loads(args.project_dict)
+    kwargs["project"] = {marker: project_str_to_fn[project] for marker, project in project_dict.items()}
+
     if args.data == "fineweb" or args.data == "shakespeare":
-        kwargs = {"vocab_size": 50304 if args.data == "fineweb" else 65, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "residual_scale": args.residual_scale, "scales_learnable": args.scales_learnable, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init}
-        if args.manifold:
-            return OrthogonalGPT(**kwargs)
-        elif args.project:
-            return LakerGPT(**kwargs)
-        else:
-            return GPT(**kwargs)
+        return GPT(**kwargs) if not args.manifold else OrthogonalGPT(**kwargs)
     elif args.data == "cifar":
-        kwargs = {"output_dim": 10, "input_dim": 32*32*3, "width": args.d_embed, "depth": args.blocks}
-        if args.manifold:
-            assert args.project, "Manifold models must be projected due to rectangular matrices in CIFAR"
-            return Scalar(args.final_scale) @ MLP(**kwargs) @ Flatten()
-        elif args.project:
-            return Scalar(args.final_scale) @ LakerMLP(**kwargs) @ Flatten()
-        else:
-            return MLP(**kwargs) @ Flatten()
+        kwargs["output_dim"] = 10
+        kwargs["input_dim"] = 32*32*3
+        model = MLP(**kwargs) if not args.manifold else ManifoldMLP(**kwargs)
+        return Scalar(args.final_scale) @ model @ Flatten()
     else:
         raise ValueError(f"Unknown dataset: {args.data}")
 
@@ -86,39 +89,54 @@ def train(args):
     print_log(f"Training with {num_params} parameters")
 
     step = 0
-    running_loss = 0.0
-    buf1 = [0 * weight for weight in w]
-    buf2 = [0 * weight for weight in w]
+    accum_step = 0
+    accum_loss = 0.0
+    accum_grad = jax.tree.map(jnp.zeros_like, w)
+    buf1 = jax.tree.map(jnp.zeros_like, w)
+    buf2 = jax.tree.map(jnp.zeros_like, w) if args.optimizer == "adam" else None
     schedule = {
         "linear": lambda step: (args.steps - step) / args.steps,
         "cosine": lambda step: 0.5 * (1 + jnp.cos(jnp.pi * step / args.steps)),
         "none": lambda step: 1
     }[args.schedule]
+    running_loss = 0.0
 
     for inputs, targets in train_loader:
         loss, grad_w = loss_and_grad(w, inputs, targets)
+        accum_grad = jax.tree.map(jnp.add, accum_grad, grad_w)
+        accum_loss += loss.item()
+        accum_step += 1
+
+        # only update the weights after accumulating enough gradients
+        if accum_step % args.accum_steps != 0:
+            continue
+
+        # prepare for the next accumulation
+        loss = accum_loss / args.accum_steps
+        grad_w = jax.tree.map(lambda g: g / args.accum_steps, accum_grad)
+        accum_grad = jax.tree.map(jnp.zeros_like, w)
+        accum_loss = 0.0
+        step = (accum_step - 1) // args.accum_steps
+
         # pre_dualize, update first moment, update second moment, possibly apply adam, post_dualize
         d_m = model.dualize(grad_w) if args.pre_dualize else grad_w
-        buf1 = [args.beta1 * m + (1-args.beta1) * d_m    for m, d_m in zip(buf1, d_m)]
-        buf2 = [args.beta2 * m + (1-args.beta2) * d_m**2 for m, d_m in zip(buf2, d_m)]
-        d_w = [m1 / (jnp.sqrt(m2) + 1e-12) if args.optimizer == "adam" else m1 for m1, m2 in zip(buf1, buf2)]
+        buf1 = jax.tree.map(lambda m, d_m: args.beta1 * m + (1-args.beta1) * d_m, buf1, d_m)
+        buf2 = jax.tree.map(lambda m, d_m: args.beta2 * m + (1-args.beta2) * d_m**2, buf2, d_m) if args.optimizer == "adam" else None
+        d_w = jax.tree.map(lambda m1, m2: m1 / (jnp.sqrt(m2) + 1e-12), buf1, buf2) if args.optimizer == "adam" else buf1
         d_w = model.dualize(d_w) if args.post_dualize else d_w
 
-        # Original coupling code (couples learning rate too)
+        # Original coupling code (couples initial learning rate too)
         # if args.wd_lr_power == 0: wd_step_size = schedule(step) # decoupled weight decay like in the original AdamW paper
         # else: wd_step_size = (args.lr * schedule(step)) ** args.wd_lr_power # control the proportionality of weight decay to lr
         
         # Test coupling code (only couples the schedule step)
         wd_step_size = schedule(step) ** args.wd_lr_power
-        
-        w = [(1 - args.wd * wd_step_size) * weight for weight in w]
-
+        w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
         w = model.step(w, d_w, args.lr * schedule(step))
-        if args.project:
-            w = model.project(w)
+        w = model.project(w)
         print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f}")
 
-        running_loss += loss.item()
+        running_loss += loss
         if step % args.log_interval == 0:
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
             log = model.log(w, d_w)
@@ -126,21 +144,22 @@ def train(args):
             running_loss = 0.0
         
         if step % args.val_interval == 0:
-            accuracies_to_avg = []
-            val_losses_to_avg = []
+            val_loss_sum = 0.0
+            val_acc_sum = 0.0
+            val_step = 0
             for val_inputs, val_targets in val_loader:
                 loss, _ = loss_and_grad(w, val_inputs, val_targets)
                 logits = model(val_inputs, w)
-                val_losses_to_avg.append(float(loss))
+                val_loss_sum += float(loss)
                 preds = jnp.argmax(logits, axis=-1)
-                accuracies_to_avg.append(jnp.mean(preds == val_targets))
-                if len(val_losses_to_avg) >= args.val_iters:
+                val_acc_sum += jnp.mean(preds == val_targets)
+                val_step += 1
+                if val_step >= args.val_iters:
                     break
-            val_losses.append(float(sum(val_losses_to_avg)/len(val_losses_to_avg)))
-            accuracies.append(float(sum(accuracies_to_avg)/len(accuracies_to_avg)))
+            val_losses.append(float(val_loss_sum / val_step))
+            accuracies.append(float(val_acc_sum / val_step))
             print_log(f"Step:{step}/{args.steps} val_loss:{val_losses[-1]:.4f} val_acc:{accuracies[-1]:.4f}", indent=1)
 
-        step += 1
         if step >= args.steps:
             break
     
@@ -158,8 +177,7 @@ def save_results(results, args):
         f"embed{args.d_embed}_lr{args.lr:.4f}_{args.optimizer}_"
         f"{'pre_' if args.pre_dualize else ''}"
         f"{'post_' if args.post_dualize else ''}"
-        #f"{'manifold_' if args.manifold else ''}"
-        f"{'project_' if args.project else ''}"
+        f"{args.project + '_' if args.project != 'none' else ''}"
         f"wd{args.wd:.4f}_steps{args.steps}_"
         f"{timestamp_to_millisecond}.json"
     )
@@ -206,20 +224,20 @@ def main():
     parser.add_argument("--beta1", type=float, default=0.95, help="Momentum buffer 1 coefficient")
     parser.add_argument("--beta2", type=float, default=0.99, help="Momentum buffer 2 coefficient")
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
+    parser.add_argument("--accum_steps", type=int, default=1, help="Number of steps to accumulate gradients")
     parser.add_argument("--zero_init", type=lambda x: x.lower() == "true", default=True, help="Whether to zero-init the out projection in attention")
-    parser.add_argument("--project", type=lambda x: x.lower() == "true", default=False, help="Whether to project the weights")
+    parser.add_argument("--project_dict", type=str, default="none", help="The way to project the weights, with \"default\" and specific layer names each assigned project functions")
     parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=False, help="Whether to constrain to the manifold directly")
     parser.add_argument("--schedule", type=str, default="linear", help="Learning rate schedule")
     parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
     parser.add_argument("--data", type=str, default="shakespeare", help="Which dataset to use")
     parser.add_argument("--seed", type=int, default=0, help="Random seed")
+    parser.add_argument("--log_interval", type=int, default=10, help="Log interval")
+    parser.add_argument("--val_interval", type=int, default=100, help="Validation interval")
+    parser.add_argument("--val_iters", type=int, default=200, help="Validation iterations")
     parser.add_argument("--output_dir", type=str, default="results", help="Output directory")
     args = parser.parse_args()
 
-    args.log_interval = 10 if args.data == "fineweb" else (10 if args.data == "shakespeare" else 100)
-    args.val_interval = 50 if args.data == "fineweb" else (100 if args.data == "shakespeare" else 500)
-    args.val_iters = 50
-    
     results = train(args)    
     save_results(results, args)
 

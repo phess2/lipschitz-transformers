@@ -3,6 +3,13 @@ import jax.numpy as jnp
 
 from modula.abstract import Atom
 
+def batch_project(M, project_fn):
+    """Batch project tensors of shape [..., fanout, fanin]."""
+    matrix_shape = M.shape[-2:]
+    M_flattened = M.reshape((-1,) + matrix_shape)
+    M_projected = jax.vmap(project_fn)(M_flattened)
+    return M_projected.reshape(M.shape) / len(M_flattened)
+
 def _orthogonalize(M):
     """Orthogonalize a single matrix."""
     a, b, c = 3.0, -3.2, 1.2
@@ -18,15 +25,8 @@ def _orthogonalize(M):
         M = M.T
     return M
 
-def orthogonalize(M):
-    """Batch orthogonalize tensors of shape [..., fanout, fanin]."""
-    matrix_shape = M.shape[-2:]
-    M_flattened = M.reshape((-1,) + matrix_shape)
-    M_orthogonalized = jax.vmap(_orthogonalize)(M_flattened)
-    return M_orthogonalized.reshape(M.shape) / len(M_flattened)
-
 def _laker_special_sauce(M):
-    """Apply min(1, x) to the singular values of a single matrix."""
+    """Apply min(1, x) approximately to the singular values of a single matrix."""
     coeffs = [
         (0.988281, 0.0917969, 0.0148315),
         (1.00781, -0.0544434, 0.0498047),
@@ -44,15 +44,26 @@ def _laker_special_sauce(M):
         M = M.T
     return M
 
+def _laker_pure_svd(M):
+    """Apply min(1, x) exactly to the singular values of a single matrix."""
+    U, S, Vh = jnp.linalg.svd(M, full_matrices=False)
+    S = jnp.clip(S, a_max=1)
+    return U @ jnp.diag(S) @ Vh
+
+def orthogonalize(M):
+    """Batch orthogonalize tensors of shape [..., fanout, fanin]."""
+    return batch_project(M, _orthogonalize)
+
 def laker_special_sauce(M):
     """Batch special sauce tensors of shape [..., fanout, fanin]."""
-    matrix_shape = M.shape[-2:]
-    M_flattened = M.reshape((-1,) + matrix_shape)
-    M_soft_projected = jax.vmap(_laker_special_sauce)(M_flattened)
-    return M_soft_projected.reshape(M.shape)
+    return batch_project(M, _laker_special_sauce)
+
+def laker_pure_svd(M):
+    """Batch pure SVD tensors of shape [..., fanout, fanin]."""
+    return batch_project(M, _laker_pure_svd)
 
 class Linear(Atom):
-    def __init__(self, fanout, fanin, zero_init=False, tracker=None):
+    def __init__(self, fanout, fanin, zero_init=False, project=None, tracker=None):
         super().__init__(tracker)
         self.fanin  = fanin
         self.fanout = fanout
@@ -61,10 +72,20 @@ class Linear(Atom):
         self.mass = 1
         self.sensitivity = 1
 
+        self._project = lambda x: x
+        if tracker in project:
+            self._project = project[tracker]
+        elif "default" in project:
+            self._project = project["default"]
+
     def forward(self, x, w):
         # x shape is [..., fanin]
         weights = w[0]  # shape is [fanout, fanin]
         return x @ weights.transpose()  # shape is [..., fanout]
+
+    def orthogonalize(self, w):
+        weight = w[0]
+        return [orthogonalize(weight) * jnp.sqrt(self.fanout / self.fanin)]
 
     def initialize(self, key):
         if self.tracker is not None:
@@ -72,15 +93,15 @@ class Linear(Atom):
         if self.zero_init:
             return [jnp.zeros((self.fanout, self.fanin))]
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
-        return self.project([weight])
-
+        return self.orthogonalize([weight])
+    
     def project(self, w):
         weight = w[0]
-        weight = orthogonalize(weight) * jnp.sqrt(self.fanout / self.fanin)
-        return [weight]
+        scale = jnp.sqrt(self.fanout / self.fanin)
+        return [self._project(weight / scale) * scale]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = self.project(grad_w)[0] * target_norm
+        d_weight = self.orthogonalize(grad_w)[0] * target_norm
         return [d_weight]
     
     def log(self, w, grad_w):
@@ -102,7 +123,7 @@ class Linear(Atom):
 
 class ManifoldLinear(Linear):
     """Weight matrix constrained to be semiorthogonal."""
-    def __init__(self, fanout, fanin, tracker=None):
+    def __init__(self, fanout, fanin, tracker=None, project=None):
         super().__init__(fanout, fanin, tracker)
         
     def dualize(self, grad_w, w=None, target_norm=1.0):
@@ -120,29 +141,6 @@ class ManifoldLinear(Linear):
     def step(self, w, d_w, lr):
         # See: https://docs.modula.systems/algorithms/manifold/orthogonal/
         return [(w[0] - lr * d_w[0]) / (1 + lr**2)**0.5]
-
-class LakerLinear(Linear):
-    """Weight matrix singular values no greater than 1."""
-    def __init__(self, fanout, fanin, zero_init=False, tracker=None):
-        super().__init__(fanout, fanin, zero_init, tracker)
-
-    def initialize(self, key):
-        if self.tracker is not None:
-            self.log_info = {}
-        if self.zero_init:
-            return [jnp.zeros((self.fanout, self.fanin))]
-        weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
-        return super().project([weight])
-
-    def project(self, w):
-        weight = w[0]
-        weight = laker_special_sauce(weight)
-        return [weight]
-
-    def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = super().project(grad_w)[0] * target_norm
-        return [d_weight]
-    
 
 class HeadedLinear(Linear):
     """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
@@ -203,35 +201,6 @@ class ManifoldHeadedLinear(ManifoldLinear):
         self.log_info["weight_norm"].append(max_norm * self.num_heads)
         return {self.tracker: self.log_info}
 
-class LakerHeadedLinear(LakerLinear):
-    """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
-    def __init__(self, num_heads, fanout, fanin, tracker=None):
-        super().__init__(fanout, fanin, tracker)
-        self.num_heads = num_heads
-    
-    def forward(self, x, w):
-        # x is shape [...fanin]
-        # w[0] is shape [heads, fanout, fanin]
-        # output is shape [...heads, fanout]
-        return jnp.einsum("...i, h o i -> ...h o", x, w[0])
-
-    def initialize(self, key):
-        if self.tracker is not None:
-            self.log_info = {}
-        weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
-        return self.project([weight])
-    
-    def log(self, w, grad_w):
-        if self.tracker is None:
-            return {}
-        
-        if "weight_norm" not in self.log_info:
-            self.log_info["weight_norm"] = []
-
-        max_norm = max([jnp.linalg.norm(w[0][i], ord=2) for i in range(self.num_heads)])
-        self.log_info["weight_norm"].append(max_norm * self.num_heads)
-        return {self.tracker: self.log_info}
-
 class HeadedLinearOut(HeadedLinear):
     def __init__(self, num_heads, fanout, fanin, tracker=None):
         super().__init__(num_heads, fanout, fanin, tracker)
@@ -252,17 +221,6 @@ class ManifoldHeadedLinearOut(ManifoldHeadedLinear):
         # w is shape [heads, fanout, fanin]
         # output is shape [...heads, fanout]
         return jnp.einsum("...h i, h o i -> ...h o", x, w[0])
-
-class LakerHeadedLinearOut(LakerHeadedLinear):
-    def __init__(self, num_heads, fanout, fanin, tracker=None):
-        super().__init__(num_heads, fanout, fanin, tracker)
-
-    def forward(self, x, w):
-        # x is shape [...heads, fanin]
-        # w is shape [heads, fanout, fanin]
-        # output is shape [...heads, fanout]
-        return jnp.einsum("...h i, h o i -> ...h o", x, w[0])
-
 
 def sr_sinkhorn(g, steps=5):
     """

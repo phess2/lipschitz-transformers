@@ -19,7 +19,10 @@ optimizer_pre_post_lr = [
 # ]
 
 d_embeds = [128]
-project = [False]
+project = [{
+    "default": "orthogonal",
+    "mlp_out": "laker_pure_svd",
+}]  # key: default or tracker string; value: none, orthogonal, laker, laker_pure_svd
 manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
@@ -34,10 +37,6 @@ wd_and_wdlr_power = [
     (wd_base, 2),
 ] # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
 
-num_heads = [4]
-seq_len = 256
-zero_init = True
-
 steps = 10001
 beta1 = 0.9
 beta2 = 0.95
@@ -47,13 +46,19 @@ seeds = [0]
 data = "cifar"      # fineweb, shakespeare, cifar
 output_dir = "results"
 
-blocks = 6 if data == "fineweb" else (3 if data == "shakespeare" else 3)
+num_blocks = 12 if data == "fineweb" else (3 if data == "shakespeare" else 3)
 seq_len = 1024 if data == "fineweb" else 256
-num_heads = [8] if data == "fineweb" else [4]
+num_heads = [12] if data == "fineweb" else [4]
 zero_init = True
 
-batch_size = 32 if data == "fineweb" else (64 if data == "shakespeare" else 128)
+batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 128)
+accum_steps = 8 if data == "fineweb" else 1
+vocab_size = 50304 if data == "fineweb" else 65
 assert not (data == "cifar" and zero_init == False)
+
+log_interval = 10 if data == "fineweb" else (10 if data == "shakespeare" else 100)
+val_interval = 100 if data == "fineweb" else (100 if data == "shakespeare" else 500)
+val_iters = 200 if data == "fineweb" else 50
 
 # Create all combinations
 combinations = []
@@ -76,7 +81,7 @@ for optimizer, pre, post, lrs in optimizer_pre_post_lr:
                                                         'lr': lr,
                                                         'wd': wd,
                                                         'wd_lr_power': wd_lr_power,
-                                                        'blocks': blocks,
+                                                        'num_blocks': num_blocks,
                                                         'seq_len': seq_len,
                                                         'num_heads': nheads,
                                                         'softmax_scale': softmax_scale,
@@ -89,6 +94,7 @@ for optimizer, pre, post, lrs in optimizer_pre_post_lr:
                                                         'beta1': beta1,
                                                         'beta2': beta2,
                                                         'batch_size': batch_size,
+                                                        'accum_steps': accum_steps,
                                                         'zero_init': zero_init,
                                                         'project': proj,
                                                         'manifold': manifold,
@@ -96,6 +102,9 @@ for optimizer, pre, post, lrs in optimizer_pre_post_lr:
                                                         'schedule': schedule,
                                                         'data': data,
                                                         'seed': seed,
+                                                        'log_interval': log_interval,
+                                                        'val_interval': val_interval,
+                                                        'val_iters': val_iters,
                                                         'output_dir': output_dir,
                                                     })
 
