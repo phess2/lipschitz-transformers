@@ -100,6 +100,7 @@ def train(args):
         "none": lambda step: 1
     }[args.schedule]
     running_loss = 0.0
+    start_time = time.time()  # Add start time tracking
 
     for inputs, targets in train_loader:
         loss, grad_w = loss_and_grad(w, inputs, targets)
@@ -134,10 +135,17 @@ def train(args):
         w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
         w = model.step(w, d_w, args.lr * schedule(step))
         w = model.project(w)
-        print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f}")
 
         running_loss += loss
         if step % args.log_interval == 0:
+            # Calculate and format ETA
+            if step > 0:
+                eta_seconds = (time.time() - start_time) / step * (args.steps - step)
+                eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
+                print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f} ETA:{eta_str}")
+            else:
+                print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f}")
+                
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
             log = model.log(w, d_w)
             losses.append(float(interval_loss))
@@ -166,6 +174,7 @@ def train(args):
     log["losses"] = losses
     log["val_losses"] = val_losses
     log["accuracies"] = accuracies
+    log["total_time"] = time.time() - start_time
     return log
 
 def save_results(results, args):

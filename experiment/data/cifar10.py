@@ -183,6 +183,10 @@ def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = 
 if __name__ == "__main__":
     # Load the data with batch size of 64
     data = load_cifar10(batch_size=64)
+    train_size = len(data['train_loader'].dataset)
+    test_size = len(data['test_loader'].dataset)
+    print(f"Number of training samples: {train_size} ({train_size // 64} full batches)")
+    print(f"Number of test samples: {test_size} ({test_size // 64} full batches)")
     
     # Get the first batch from the training loader
     for x_batch, y_batch in data['train_loader']:
