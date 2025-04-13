@@ -24,14 +24,14 @@ from data.cifar10 import load_cifar10
 from data.fineweb import load_fineweb
 
 max_log_priority = 1
-def print_log(message, priority=0, indent=0):
+def print_log(message, job_idx, priority=0, indent=0):
     if priority > max_log_priority: return
 
     current_time = time.strftime("%H:%M:%S")
     gpu_memory = jax.device_get(jax.devices()[0].memory_stats()['peak_bytes_in_use']) / 1024**3 if jax.devices() else -1
     process = psutil.Process()
     ram_usage = process.memory_info().rss / 1024**3
-    print(f"[{current_time} gpu {gpu_memory:.1f}G ram {ram_usage:.1f}G] {' '*4*indent}{message}")
+    print(f"[{current_time} gpu {gpu_memory:.1f}G ram {ram_usage:.1f}G idx {job_idx}] {' '*4*indent}{message}")
 
 def load_data(args):
     if args.data == "fineweb":
@@ -55,8 +55,7 @@ def create_model(args):
     kwargs = args.copy()
 
     # set out the dictionary for which project function to apply for each layer
-    project_dict = json.loads(args.project_dict)
-    kwargs["project"] = {marker: project_str_to_fn[project] for marker, project in project_dict.items()}
+    kwargs["project"] = {marker: project_str_to_fn[project] for marker, project in args.project.items()}
 
     if args.data == "fineweb" or args.data == "shakespeare":
         return GPT(**kwargs) if not args.manifold else OrthogonalGPT(**kwargs)
@@ -86,7 +85,7 @@ def train(args):
     val_losses = []
     accuracies = []
     num_params = sum(jnp.prod(jnp.array(p.shape)) for p in w).item()
-    print_log(f"Training with {num_params} parameters")
+    print_log(f"Training with {num_params} parameters", args.job_idx)
 
     step = 0
     accum_step = 0
@@ -100,7 +99,7 @@ def train(args):
         "none": lambda step: 1
     }[args.schedule]
     running_loss = 0.0
-    start_time = time.time()  # Add start time tracking
+    start_time = time.time()
 
     for inputs, targets in train_loader:
         loss, grad_w = loss_and_grad(w, inputs, targets)
@@ -139,12 +138,11 @@ def train(args):
         running_loss += loss
         if step % args.log_interval == 0:
             # Calculate and format ETA
-            if step > 0:
-                eta_seconds = (time.time() - start_time) / step * (args.steps - step)
-                eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
-                print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f} ETA:{eta_str}")
-            else:
-                print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f}")
+            steps_done = (1 + step) * (1 + args.val_iters / args.val_interval)
+            steps_remaining = (args.steps - step) * (1 + args.val_iters / args.val_interval)
+            eta_seconds = (time.time() - start_time) * steps_remaining / steps_done
+            eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
+            print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f} ETA:{eta_str}", args.job_idx)
                 
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
             log = model.log(w, d_w)
@@ -166,7 +164,7 @@ def train(args):
                     break
             val_losses.append(float(val_loss_sum / val_step))
             accuracies.append(float(val_acc_sum / val_step))
-            print_log(f"Step:{step}/{args.steps} val_loss:{val_losses[-1]:.4f} val_acc:{accuracies[-1]:.4f}", indent=1)
+            print_log(f"Step:{step}/{args.steps} val_loss:{val_losses[-1]:.4f} val_acc:{accuracies[-1]:.4f}", args.job_idx, indent=1)
 
         if step >= args.steps:
             break
@@ -181,18 +179,18 @@ def save_results(results, args):
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     timestamp_to_millisecond = time.strftime("%Y%m%d_%H%M%S") + f"{int(time.time() * 1000) % 1000:03d}"
+    args.timestamp = timestamp_to_millisecond
+
+    uniqueness_hash = hash(json.dumps(args))
     filename = (
-        f"{args.data}_"
-        f"embed{args.d_embed}_lr{args.lr:.4f}_{args.optimizer}_"
-        f"{'pre_' if args.pre_dualize else ''}"
-        f"{'post_' if args.post_dualize else ''}"
-        f"{args.project + '_' if args.project != 'none' else ''}"
+        f"{args.data}_{args.optimizer}_"
+        f"embed{args.d_embed}_lr{args.lr:.4f}_"
         f"wd{args.wd:.4f}_steps{args.steps}_"
-        f"{timestamp_to_millisecond}.json"
+        f"{abs(uniqueness_hash):x}.json"
     )
 
     output = {
-        'parameters': vars(args),
+        'parameters': args,
         'results': results,
         'code': code
     }
@@ -212,40 +210,39 @@ def save_results(results, args):
     with open(output_path, 'w') as f:
         json.dump(output, f, indent=2)
     
-    print_log(f"Results saved to {output_path}")
+    print_log(f"Results saved to {output_path}", args.job_idx)
+
+class DotDict(dict):
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError as e:
+            raise AttributeError(e)
+
+    def __setattr__(self, key, value):
+        self[key] = value
+
+    def __delattr__(self, key):
+        try:
+            del self[key]
+        except KeyError as e:
+            raise AttributeError(e)
 
 def main():
+    # Create parser and add arguments
     parser = argparse.ArgumentParser(description="Modula train script for sweeps")
-    parser.add_argument("--d_embed", type=int, default=128, help="Embedding dimension")
-    parser.add_argument("--lr", type=float, default=0.1, help="Learning rate")
-    parser.add_argument("--wd", type=float, default=0.0, help="Weight decay")
-    parser.add_argument("--wd_lr_power", type=float, default=0, help="Weight decay power of coupling to learning rate")
-    parser.add_argument("--blocks", type=int, default=4, help="Number of transformer layers")
-    parser.add_argument("--seq_len", type=int, default=256, help="Sequence length")
-    parser.add_argument("--num_heads", type=int, default=4, help="Number of attention heads")
-    parser.add_argument("--softmax_scale", type=float, default=1.0, help="Softmax scale")
-    parser.add_argument("--final_scale", type=float, default=1.0, help="Final scale")
-    parser.add_argument("--residual_scale", type=float, default=1.0, help="a, where x becomes (1 - a/depth) * x + (a/depth) * block(x)")
-    parser.add_argument("--scales_learnable", type=lambda x: x.lower() == "true", default=False, help="Whether to learn the scales")
-    parser.add_argument("--optimizer", type=str, default="adam", help="Optimizer")
-    parser.add_argument("--pre_dualize", type=lambda x: x.lower() == "true", default=False, help="Whether to pre-dualize")
-    parser.add_argument("--post_dualize", type=lambda x: x.lower() == "true", default=True, help="Whether to post-dualize")
-    parser.add_argument("--beta1", type=float, default=0.95, help="Momentum buffer 1 coefficient")
-    parser.add_argument("--beta2", type=float, default=0.99, help="Momentum buffer 2 coefficient")
-    parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
-    parser.add_argument("--accum_steps", type=int, default=1, help="Number of steps to accumulate gradients")
-    parser.add_argument("--zero_init", type=lambda x: x.lower() == "true", default=True, help="Whether to zero-init the out projection in attention")
-    parser.add_argument("--project_dict", type=str, default="none", help="The way to project the weights, with \"default\" and specific layer names each assigned project functions")
-    parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=False, help="Whether to constrain to the manifold directly")
-    parser.add_argument("--schedule", type=str, default="linear", help="Learning rate schedule")
-    parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
-    parser.add_argument("--data", type=str, default="shakespeare", help="Which dataset to use")
-    parser.add_argument("--seed", type=int, default=0, help="Random seed")
-    parser.add_argument("--log_interval", type=int, default=10, help="Log interval")
-    parser.add_argument("--val_interval", type=int, default=100, help="Validation interval")
-    parser.add_argument("--val_iters", type=int, default=200, help="Validation iterations")
-    parser.add_argument("--output_dir", type=str, default="results", help="Output directory")
+    parser.add_argument("--job_idx", type=int, default=-1, help="Index of the job")
     args = parser.parse_args()
+    assert args.job_idx != -1, "job_idx must be set to the index of the job"
+    
+    with open('sweep_configs/parameter_grid.json', 'r') as f:
+        job_idx = args.job_idx
+        args = json.load(f)[job_idx]
+        args["job_idx"] = job_idx
+        args = DotDict(args)
+    
+    for key, value in args.items():
+        print_log(f"{key}: {value}", args.job_idx)
 
     results = train(args)    
     save_results(results, args)

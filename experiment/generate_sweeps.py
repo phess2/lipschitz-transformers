@@ -49,11 +49,10 @@ output_dir = "results"
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
 accum_steps = 8 if data == "fineweb" else 1
 vocab_size = 50304 if data == "fineweb" else 65
-assert not (data == "cifar" and zero_init == False)
 
-epochs = 5
+epochs = 10
 epoch_steps = 50000 // batch_size
-steps = epochs * epoch_steps if data == "cifar" else 10001
+steps = int(epochs * epoch_steps) if data == "cifar" else 10001
 beta1 = 0.9
 beta2 = 0.95
 schedules = ["linear"]      # linear, cosine, or none
