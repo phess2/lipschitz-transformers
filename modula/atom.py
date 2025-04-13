@@ -3,6 +3,13 @@ import jax.numpy as jnp
 
 from modula.abstract import Atom
 
+def batch_project(M, project_fn):
+    """Batch project tensors of shape [..., fanout, fanin]."""
+    matrix_shape = M.shape[-2:]
+    M_flattened = M.reshape((-1,) + matrix_shape)
+    M_projected = jax.vmap(project_fn)(M_flattened)
+    return M_projected.reshape(M.shape) / len(M_flattened)
+
 def _orthogonalize(M):
     """Orthogonalize a single matrix."""
     a, b, c = 3.0, -3.2, 1.2
@@ -18,15 +25,8 @@ def _orthogonalize(M):
         M = M.T
     return M
 
-def orthogonalize(M):
-    """Batch orthogonalize tensors of shape [..., fanout, fanin]."""
-    matrix_shape = M.shape[-2:]
-    M_flattened = M.reshape((-1,) + matrix_shape)
-    M_orthogonalized = jax.vmap(_orthogonalize)(M_flattened)
-    return M_orthogonalized.reshape(M.shape) / len(M_flattened)
-
 def _laker_special_sauce(M):
-    """Apply min(1, x) to the singular values of a single matrix."""
+    """Apply min(1, x) approximately to the singular values of a single matrix."""
     coeffs = [
         (0.988281, 0.0917969, 0.0148315),
         (1.00781, -0.0544434, 0.0498047),
@@ -44,12 +44,23 @@ def _laker_special_sauce(M):
         M = M.T
     return M
 
+def _laker_pure_svd(M):
+    """Apply min(1, x) exactly to the singular values of a single matrix."""
+    U, S, Vh = jnp.linalg.svd(M, full_matrices=False)
+    S = jnp.clip(S, a_max=1)
+    return U @ jnp.diag(S) @ Vh
+
+def orthogonalize(M):
+    """Batch orthogonalize tensors of shape [..., fanout, fanin]."""
+    return batch_project(M, _orthogonalize)
+
 def laker_special_sauce(M):
     """Batch special sauce tensors of shape [..., fanout, fanin]."""
-    matrix_shape = M.shape[-2:]
-    M_flattened = M.reshape((-1,) + matrix_shape)
-    M_soft_projected = jax.vmap(_laker_special_sauce)(M_flattened)
-    return M_soft_projected.reshape(M.shape)
+    return batch_project(M, _laker_special_sauce)
+
+def laker_pure_svd(M):
+    """Batch pure SVD tensors of shape [..., fanout, fanin]."""
+    return batch_project(M, _laker_pure_svd)
 
 class Linear(Atom):
     def __init__(self, fanout, fanin, zero_init=False, project=None, tracker=None):
@@ -57,10 +68,15 @@ class Linear(Atom):
         self.fanin  = fanin
         self.fanout = fanout
         self.zero_init = zero_init
-        self._project = orthogonalize if project is None else project
         self.smooth = True
         self.mass = 1
         self.sensitivity = 1
+
+        self._project = lambda x: x
+        if tracker in project:
+            self._project = project[tracker]
+        elif "default" in project:
+            self._project = project["default"]
 
     def forward(self, x, w):
         # x shape is [..., fanin]
@@ -101,7 +117,7 @@ class Linear(Atom):
 
 class ManifoldLinear(Linear):
     """Weight matrix constrained to be semiorthogonal."""
-    def __init__(self, fanout, fanin, tracker=None):
+    def __init__(self, fanout, fanin, tracker=None, project=None):
         super().__init__(fanout, fanin, tracker)
         
     def dualize(self, grad_w, w=None, target_norm=1.0):

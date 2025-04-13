@@ -7,12 +7,15 @@ import os
 dotenv.load_dotenv()
 
 optimizer_pre_post_lr = [
-    ("adam", False, False, np.logspace(-3.5, -1.5, 8)),
-    ("muon", False, True,  np.logspace(-2, 1, 12)), 
+    #("adam", False, False, np.logspace(-3.5, -1.5, 8)),
+    ("muon", False, True,  np.logspace(-2, -0.5, 4)), 
 ]
 
-d_embeds = [64]
-project = ["none", "laker"]  # none, laker, orthogonal
+d_embeds = [256]
+project = [{
+    "default": "orthogonal",
+    "mlp_out": "laker_pure_svd",
+}]  # key: default or tracker string; value: none, orthogonal, laker, laker_pure_svd
 manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
@@ -36,13 +39,14 @@ seeds = [0]
 data = "shakespeare"      # fineweb, shakespeare, cifar
 output_dir = "results"
 
-blocks = 12 if data == "fineweb" else (3 if data == "shakespeare" else 3)
+num_blocks = 12 if data == "fineweb" else (3 if data == "shakespeare" else 3)
 seq_len = 1024 if data == "fineweb" else 256
 num_heads = [12] if data == "fineweb" else [4]
 zero_init = True
 
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 128)
 accum_steps = 8 if data == "fineweb" else 1
+vocab_size = 50304 if data == "fineweb" else 65
 assert not (data == "cifar" and zero_init == False)
 
 log_interval = 10 if data == "fineweb" else (10 if data == "shakespeare" else 100)
@@ -70,7 +74,7 @@ for optimizer, pre, post, lrs in optimizer_pre_post_lr:
                                                         'lr': lr,
                                                         'wd': wd,
                                                         'wd_lr_power': wd_lr_power,
-                                                        'blocks': blocks,
+                                                        'num_blocks': num_blocks,
                                                         'seq_len': seq_len,
                                                         'num_heads': nheads,
                                                         'softmax_scale': softmax_scale,

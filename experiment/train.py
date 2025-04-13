@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 from modula.compound import GPT, MLP, OrthogonalGPT, ManifoldMLP
 from modula.bond import Flatten
-from modula.atom import Scalar, laker_special_sauce
+from modula.atom import Scalar, orthogonalize, laker_special_sauce, laker_pure_svd
 
 np.random.seed(0)
 
@@ -44,12 +44,25 @@ def load_data(args):
         raise ValueError(f"Unknown dataset: {args.data}")
     return data["train_loader"], data["test_loader"], data["loss"]
 
+project_str_to_fn = {
+    "none": lambda x: x,
+    "orthogonal": orthogonalize,
+    "laker": laker_special_sauce,
+    "laker_pure_svd": laker_pure_svd,
+}
+
 def create_model(args):
+    kwargs = args.copy()
+
+    # set out the dictionary for which project function to apply for each layer
+    project_dict = json.loads(args.project_dict)
+    kwargs["project"] = {marker: project_str_to_fn[project] for marker, project in project_dict.items()}
+
     if args.data == "fineweb" or args.data == "shakespeare":
-        kwargs = {"vocab_size": 50304 if args.data == "fineweb" else 65, "project": laker_special_sauce if args.project == "laker" else None, "num_heads": args.num_heads, "d_embed": args.d_embed, "num_blocks": args.blocks, "softmax_scale": args.softmax_scale, "final_scale": args.final_scale, "residual_scale": args.residual_scale, "scales_learnable": args.scales_learnable, "d_query": args.d_embed // args.num_heads, "d_value": args.d_embed // args.num_heads, "zero_init": args.zero_init}
         return GPT(**kwargs) if not args.manifold else OrthogonalGPT(**kwargs)
     elif args.data == "cifar":
-        kwargs = {"output_dim": 10, "input_dim": 32*32*3, "width": args.d_embed, "depth": args.blocks, "project": laker_special_sauce if args.project == "laker" else None}
+        kwargs["output_dim"] = 10
+        kwargs["input_dim"] = 32*32*3
         model = MLP(**kwargs) if not args.manifold else ManifoldMLP(**kwargs)
         return Scalar(args.final_scale) @ model @ Flatten()
     else:
@@ -216,7 +229,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=64, help="Batch size")
     parser.add_argument("--accum_steps", type=int, default=1, help="Number of steps to accumulate gradients")
     parser.add_argument("--zero_init", type=lambda x: x.lower() == "true", default=True, help="Whether to zero-init the out projection in attention")
-    parser.add_argument("--project", type=str, default="none", help="The way to project the weights")
+    parser.add_argument("--project_dict", type=str, default="none", help="The way to project the weights, with \"default\" and specific layer names each assigned project functions")
     parser.add_argument("--manifold", type=lambda x: x.lower() == "true", default=False, help="Whether to constrain to the manifold directly")
     parser.add_argument("--schedule", type=str, default="linear", help="Learning rate schedule")
     parser.add_argument("--steps", type=int, default=2001, help="Number of steps")
