@@ -16,11 +16,14 @@ examples/data/*
 experiment/data/cifar10_files/
 experiment/data/mnist_files/
 experiment/data/shakespeare/
+experiment/data/fineweb10B
 experiment/data/__pycache__/
 experiment/logs
 experiment/*.png
+experiment/*.gif
 experiment/result*
 experiment/sweep_configs
 experiment/chrysalis
+experiment/dawn
 experiment/scales_plots
 experiment/.env

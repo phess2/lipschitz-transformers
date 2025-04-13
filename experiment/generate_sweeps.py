@@ -7,9 +7,8 @@ import os
 dotenv.load_dotenv()
 
 optimizer_pre_post_lr = [
-    ("adam", False, False, np.logspace(-3.5, -1.5, 8)),
-    ("muon", False, True,  np.logspace(-2, 1, 12)), 
-    ("muon", False, True,  np.logspace(-3, -2, 4)), 
+    #("adam", False, False, np.logspace(-3.5, -1.5, 8)),
+    ("muon", False, True,  np.logspace(-2.5, -0.5, 8)), 
 ]
 
 # just for extending the range a bit
@@ -20,6 +19,12 @@ optimizer_pre_post_lr = [
 
 d_embeds = [128]
 project = [{
+    "default": "none",
+},{
+    "default": "orthogonal",
+},{
+    "default": "laker_pure_svd",
+},{
     "default": "orthogonal",
     "mlp_out": "laker_pure_svd",
 }]  # key: default or tracker string; value: none, orthogonal, laker, laker_pure_svd
@@ -27,53 +32,55 @@ manifold = False   # if true, post_dualize must be true and pre_dualize must be 
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
 softmax_scales = [1] # these get squared
-final_scales = [1] # these are linear
+final_scales = [0.25, 1, 4, 16, 64] # these are linear
 scales_learnable = [False]
 
-wd_base = np.array([0, 0.01, 0.001, 0.0001, 0.1, 0.05, 0.2])
+wd_base = np.array([0, 0.01, 0.03, 0.1, 0.3, 1])
 wd_and_wdlr_power = [
-    (wd_base, 0),
+    #(wd_base, 0),
     (wd_base, 1),
-    (wd_base, 2),
+    #(wd_base, 2),
 ] # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
-
-steps = 10001
-beta1 = 0.9
-beta2 = 0.95
-schedules = ["linear", "none", "cosine"]      # linear or none
 
 seeds = [0]
 data = "cifar"      # fineweb, shakespeare, cifar
 output_dir = "results"
+
+batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
+accum_steps = 8 if data == "fineweb" else 1
+vocab_size = 50304 if data == "fineweb" else 65
+assert not (data == "cifar" and zero_init == False)
+
+epochs = 5
+epoch_steps = 50000 // batch_size
+steps = epochs * epoch_steps if data == "cifar" else 10001
+beta1 = 0.9
+beta2 = 0.95
+schedules = ["linear"]      # linear, cosine, or none
 
 num_blocks = 12 if data == "fineweb" else (3 if data == "shakespeare" else 3)
 seq_len = 1024 if data == "fineweb" else 256
 num_heads = [12] if data == "fineweb" else [4]
 zero_init = True
 
-batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 128)
-accum_steps = 8 if data == "fineweb" else 1
-vocab_size = 50304 if data == "fineweb" else 65
-assert not (data == "cifar" and zero_init == False)
-
-log_interval = 10 if data == "fineweb" else (10 if data == "shakespeare" else 100)
-val_interval = 100 if data == "fineweb" else (100 if data == "shakespeare" else 500)
+log_interval = 10 if data == "fineweb" else (10 if data == "shakespeare" else epoch_steps // 10)
+val_interval = 100 if data == "fineweb" else (100 if data == "shakespeare" else epoch_steps // 2)
 val_iters = 200 if data == "fineweb" else 50
 
 # Create all combinations
 combinations = []
-for optimizer, pre, post, lrs in optimizer_pre_post_lr:
-    assert not manifold or (post and not pre), "manifold optimization requires post_dualize = True and pre_dualize = False"
-    for lr in lrs:
-        for softmax_scale in softmax_scales:
-            for final_scale in final_scales:
-                for residual_scale in residual_scales:
-                    for scale_learnable in scales_learnable:
-                        for wds, wd_lr_power in wd_and_wdlr_power:
-                            for wd in wds:
-                                for d_embed in d_embeds:
-                                    for nheads in num_heads:
-                                        for proj in project:
+for proj in project:  # project must come first so parallel jobs take similar times
+    for optimizer, pre, post, lrs in optimizer_pre_post_lr:
+        assert not manifold or (post and not pre), "manifold optimization requires post_dualize = True and pre_dualize = False"
+        for lr in lrs:
+            for softmax_scale in softmax_scales:
+                for final_scale in final_scales:
+                    for residual_scale in residual_scales:
+                        for scale_learnable in scales_learnable:
+                            for wds, wd_lr_power in wd_and_wdlr_power:
+                                for wd in wds:
+                                    for d_embed in d_embeds:
+                                        for nheads in num_heads:
                                             for schedule in schedules:
                                                 for seed in seeds:
                                                     combinations.append({

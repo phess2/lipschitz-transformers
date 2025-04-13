@@ -130,7 +130,7 @@ def train(args):
         # else: wd_step_size = (args.lr * schedule(step)) ** args.wd_lr_power # control the proportionality of weight decay to lr
         
         # Test coupling code (only couples the schedule step)
-        wd_step_size = schedule(step) ** args.wd_lr_power
+        wd_step_size = args.lr * schedule(step) ** args.wd_lr_power
         w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
         w = model.step(w, d_w, args.lr * schedule(step))
         w = model.project(w)

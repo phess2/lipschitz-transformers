@@ -2,11 +2,11 @@ from modula.abstract import *
 from modula.atom import *
 from modula.bond import *
 
-def MLP(output_dim, input_dim, d_embed, blocks, project=None, **kwargs):
+def MLP(output_dim, input_dim, d_embed, blocks, zero_init=False, project=None, **kwargs):
     m = Linear(output_dim, d_embed, project=project, tracker="mlp_in") @ ReLU()
     for i in range(blocks-2):
         m = m @ Linear(d_embed, d_embed, project=project, tracker=f"mlp_{i}") @ ReLU()
-    return m @ Linear(d_embed, input_dim, project=project, tracker="mlp_out")
+    return m @ Linear(d_embed, input_dim, project=project, zero_init=zero_init, tracker="mlp_out")
 
 def ManifoldMLP(output_dim, input_dim, d_embed, blocks, **kwargs):
     m = ManifoldLinear(output_dim, d_embed, tracker="mlp_in") @ ReLU()
