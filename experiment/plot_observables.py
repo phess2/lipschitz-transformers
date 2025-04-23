@@ -12,7 +12,7 @@ from pathlib import Path
 
 dotenv.load_dotenv()
 root_path = os.getenv('ROOT_PATH')
-path = Path(root_path) / "experiment/results/fineweb_embed672_lr0.0229_muon_post_wd0.0100_steps4001_20250406_034004758.json"
+path = Path(root_path) / "experiment/results-3-laker-approximate-10-epochs/cifar_muon_embed128_lr0.1638_wd0.1000_steps970_3a2a37944dfce938.json"
 
 with open(path, "r") as f:
     data = json.load(f)
@@ -52,8 +52,12 @@ def plot_observable(tracker_start="q", observable="weight_norm"):
     os.makedirs("scales_plots", exist_ok=True)
     plt.savefig(f"scales_plots/{tracker_start}_{observable}.png", dpi=300)
 
-for t in ["q", "k", "v", "w", "mlp_in", "mlp_out", "mlp_final"]:
+#for t in ["q", "k", "v", "w", "mlp_in", "mlp_out", "mlp_final"]:
+#   plot_observable(t, "weight_norm")
+
+for t in ["mlp_in", "mlp_0", "mlp_out"]:
    plot_observable(t, "weight_norm")
+   plot_observable(t, "cos_angle_w_with_d_w")
 
 # for t in ["softmax", "final_scale"]:
 #     plot_observable(t, "exp_scalar")

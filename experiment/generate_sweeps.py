@@ -8,7 +8,8 @@ dotenv.load_dotenv()
 
 optimizer_pre_post_lr = [
     #("adam", False, False, np.logspace(-3.5, -1.5, 8)),
-    ("muon", False, True,  np.logspace(-2.5, -0.5, 8)), 
+    #("muon", False, True,  np.logspace(-1.5, 1.5, 8)), 
+    ("muon", False, True,  np.logspace(0, 3, 8)), 
 ]
 
 # just for extending the range a bit
@@ -18,24 +19,25 @@ optimizer_pre_post_lr = [
 # ]
 
 d_embeds = [128]
-project = [{
-    "default": "none",
-},{
-    "default": "orthogonal",
-},{
-    "default": "laker_pure_svd",
-},{
-    "default": "orthogonal",
-    "mlp_out": "laker_pure_svd",
-}]  # key: default or tracker string; value: none, orthogonal, laker, laker_pure_svd
+project = [
+    #{"default": "none"},
+    #{"default": "orthogonal"},
+    #{"default": "laker_pure_svd"},
+    #{"default": "laker_approximate1"},
+    #{"default": "laker_approximate2"},
+    #{"default": "laker_approximate3"},
+    #{"default": "laker_approximate4"},
+    {"default": "laker_approximate5"},
+    #{"default": "orthogonal", "mlp_out": "laker_pure_svd"},
+]  # key: default or tracker string; value: none, orthogonal, laker, laker_pure_svd
 manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
 softmax_scales = [1] # these get squared
-final_scales = [0.25, 1, 4, 16, 64] # these are linear
+final_scales = [32, 64, 128, 256, 512] #[0.25, 1, 4, 16, 64, 96, 112, 128, 144, 160, 256, 512] # these are linear
 scales_learnable = [False]
 
-wd_base = np.array([0, 0.01, 0.03, 0.1, 0.3, 1])
+wd_base = np.array([0, 0.03, 0.1, 0.3])
 wd_and_wdlr_power = [
     #(wd_base, 0),
     (wd_base, 1),
@@ -43,7 +45,7 @@ wd_and_wdlr_power = [
 ] # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
 
 seeds = [0]
-data = "cifar"      # fineweb, shakespeare, cifar
+data = "cifar"      # fineweb, shakespeare, cifar, cifar-random
 output_dir = "results"
 
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
