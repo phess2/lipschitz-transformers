@@ -6,26 +6,30 @@ import tarfile
 import jax
 import jax.numpy as jnp
 from typing import Tuple, Dict, Any, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 
 class ImageDataset:
     """JAX dataset for image data."""
 
     def __init__(self, images, labels):
-        self.images = images
-        self.labels = labels
+        # Convert everything to JAX arrays from the beginning
+        self.images = jnp.array(images)
+        self.labels = jnp.array(labels)
         self._length = len(images)
     
     def __getitem__(self, idx):
-        return jnp.array(self.images[idx]), jnp.array(self.labels[idx])
+        return self.images[idx], self.labels[idx]
 
     def __len__(self):
         return self._length
 
 class DataLoader:
-    """JAX dataloader for image data."""
+    """JAX dataloader for image data with parallel processing and prefetching."""
     
     def __init__(self, dataset: ImageDataset, batch_size: int, shuffle: bool = False, 
-                 drop_last: bool = True, seed: int = 0, repeat: bool = True):
+                 drop_last: bool = True, seed: int = 0, repeat: bool = True,
+                 num_workers: int = 4, prefetch_size: int = 2):
         """Initialize the dataloader.
         
         Args:
@@ -35,6 +39,8 @@ class DataLoader:
             drop_last: Whether to drop the last incomplete batch
             seed: Random seed for shuffling
             repeat: Whether to restart iteration after reaching the end
+            num_workers: Number of parallel workers for data loading
+            prefetch_size: Number of batches to prefetch
         """
         self.dataset = dataset
         self.batch_size = batch_size
@@ -42,9 +48,25 @@ class DataLoader:
         self.drop_last = drop_last
         self.key = jax.random.PRNGKey(seed)
         self.repeat = repeat
+        self.num_workers = num_workers
+        self.prefetch_size = prefetch_size
+        
+        # Pre-compile the batch loading function
+        self._images = dataset.images
+        self._labels = dataset.labels
+        
+        # Define a pure function that can be JIT-compiled
+        self._get_batch = jax.jit(self._create_get_batch_fn())
+        
+    def _create_get_batch_fn(self):
+        """Create a pure function for getting a batch that can be JIT-compiled."""
+        def get_batch(images, labels, indices):
+            # Use advanced indexing which works with JIT
+            return images[indices], labels[indices]
+        return get_batch
         
     def __iter__(self) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
-        """Create an iterator over the dataset."""
+        """Create an iterator over the dataset with parallel processing."""
         while True:  # This allows for infinite iteration if repeat=True
             indices = jnp.arange(len(self.dataset))
             
@@ -58,23 +80,42 @@ class DataLoader:
             else:
                 num_batches = (len(self.dataset) + self.batch_size - 1) // self.batch_size
             
-            for i in range(num_batches):
-                start_idx = i * self.batch_size
-                end_idx = min(start_idx + self.batch_size, len(self.dataset))
-                batch_indices = indices[start_idx:end_idx]
+            # Create batches of indices
+            batch_indices = [
+                indices[i * self.batch_size:min((i + 1) * self.batch_size, len(self.dataset))]
+                for i in range(num_batches)
+            ]
+            
+            # Helper function to load next batch that uses the pre-compiled function
+            def load_next_batch(batch_idx):
+                if batch_idx >= len(batch_indices):
+                    return None
+                # Use the pre-compiled function with concrete indices
+                return self._get_batch(self._images, self._labels, batch_indices[batch_idx])
+            
+            # Create prefetch queue
+            prefetch_queue = []
+            
+            # Initialize prefetch queue
+            for i in range(min(self.prefetch_size, num_batches)):
+                batch = load_next_batch(i)
+                if batch is not None:
+                    prefetch_queue.append(batch)
+            
+            # Main iteration loop
+            current_batch = 0
+            while current_batch < num_batches:
+                # Yield current batch
+                if prefetch_queue:
+                    yield prefetch_queue.pop(0)
                 
-                # Get samples for this batch
-                xs, ys = [], []
-                for idx in batch_indices:
-                    x, y = self.dataset[int(idx)]
-                    xs.append(x)
-                    ys.append(y)
+                # Load next batch into prefetch queue
+                next_batch_idx = current_batch + self.prefetch_size
+                batch = load_next_batch(next_batch_idx)
+                if batch is not None:
+                    prefetch_queue.append(batch)
                 
-                # Stack into batch
-                x_batch = jnp.stack(xs)
-                y_batch = jnp.stack(ys)
-                
-                yield x_batch, y_batch
+                current_batch += 1
             
             # If not repeating, break after one full iteration
             if not self.repeat:
@@ -106,7 +147,7 @@ def _download_and_extract_cifar10():
 
 def _load_cifar10_data(normalize=True, randomize_labels=False):
     """
-    Loads the CIFAR-10 dataset.
+    Loads the CIFAR-10 dataset with parallel processing.
     Returns: (train_images, train_labels, test_images, test_labels)
     """
     extracted_dir = _download_and_extract_cifar10()
@@ -116,25 +157,26 @@ def _load_cifar10_data(normalize=True, randomize_labels=False):
             batch = pickle.load(f, encoding='bytes')
         return batch[b'data'].reshape(-1, 3, 32, 32).transpose(0, 2, 3, 1), np.array(batch[b'labels'])
 
-    # Load training data
-    train_images, train_labels = [], []
-    for i in range(1, 6):
-        images, labels = load_batch(f'data_batch_{i}')
-        train_images.append(images)
-        train_labels.append(labels)
+    # Load training data in parallel using multiprocessing
+    train_filenames = [f'data_batch_{i}' for i in range(1, 6)]
     
-    train_images = np.concatenate(train_images)
-    train_labels = np.concatenate(train_labels)
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        results = list(executor.map(load_batch, train_filenames))
+    
+    train_images = np.concatenate([r[0] for r in results])
+    train_labels = np.concatenate([r[1] for r in results])
     
     # Load test data
     test_images, test_labels = load_batch('test_batch')
 
     if normalize:
+        # Use JAX's parallel processing for normalization
         train_images = train_images.astype(np.float32) / 255.0
         test_images = test_images.astype(np.float32) / 255.0
     
     if randomize_labels:
-        train_labels = np.random.permutation(train_labels)
+        rng = np.random.default_rng()
+        train_labels = rng.permutation(train_labels)
 
     return train_images, train_labels, test_images, test_labels
 
