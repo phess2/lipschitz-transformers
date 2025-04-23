@@ -104,7 +104,7 @@ def _download_and_extract_cifar10():
     
     return extracted_dir
 
-def _load_cifar10_data(normalize=True):
+def _load_cifar10_data(normalize=True, randomize_labels=False):
     """
     Loads the CIFAR-10 dataset.
     Returns: (train_images, train_labels, test_images, test_labels)
@@ -132,6 +132,9 @@ def _load_cifar10_data(normalize=True):
     if normalize:
         train_images = train_images.astype(np.float32) / 255.0
         test_images = test_images.astype(np.float32) / 255.0
+    
+    if randomize_labels:
+        train_labels = np.random.permutation(train_labels)
 
     return train_images, train_labels, test_images, test_labels
 
@@ -142,7 +145,7 @@ def classification_loss(model, w, inputs, targets):
     return -jnp.sum(one_hot_targets * jax.nn.log_softmax(logits)) / inputs.shape[0]
 
 def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = True, 
-                 repeat: bool = True) -> Dict[str, Any]:
+                 repeat: bool = True, randomize_labels: bool = False) -> Dict[str, Any]:
     """
     Load the CIFAR-10 dataset and create dataloaders.
     
@@ -151,12 +154,16 @@ def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = 
         shuffle: Whether to shuffle the training data
         normalize: Whether to normalize the images to [0, 1]
         repeat: Whether to restart iteration after reaching the end
-        
+        randomize_labels: Whether to randomize the labels
+
     Returns:
         Dictionary containing train_loader, test_loader, and metadata
     """
     # Load the raw data
-    train_images, train_labels, test_images, test_labels = _load_cifar10_data(normalize=normalize)
+    train_images, train_labels, test_images, test_labels = _load_cifar10_data(
+        normalize=normalize,
+        randomize_labels=randomize_labels
+    )
     
     # Create datasets
     train_dataset = ImageDataset(train_images, train_labels)
