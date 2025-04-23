@@ -15,13 +15,13 @@ import jax
 import jax.numpy as jnp
 from modula.compound import GPT, MLP, OrthogonalGPT, ManifoldMLP
 from modula.bond import Flatten
-from modula.atom import Scalar, orthogonalize, laker_special_sauce, laker_pure_svd
+from modula.atom import Scalar, orthogonalize, laker_pure_svd, laker_special_sauce1, laker_special_sauce2, laker_special_sauce3, laker_special_sauce4, laker_special_sauce5
 
 np.random.seed(0)
 
 from data.shakespeare import load_shakespeare
 from data.cifar10 import load_cifar10
-from data.fineweb import load_fineweb
+#from data.fineweb import load_fineweb
 
 max_log_priority = 1
 def print_log(message, job_idx, priority=0, indent=0):
@@ -39,7 +39,9 @@ def load_data(args):
     elif args.data == "shakespeare":
         data = load_shakespeare(args.seq_len, args.batch_size)
     elif args.data == "cifar":
-        data = load_cifar10(args.batch_size)
+        data = load_cifar10(args.batch_size, randomize_labels=False)
+    elif args.data == "cifar-random":
+        data = load_cifar10(args.batch_size, randomize_labels=True)
     else:
         raise ValueError(f"Unknown dataset: {args.data}")
     return data["train_loader"], data["test_loader"], data["loss"]
@@ -47,8 +49,12 @@ def load_data(args):
 project_str_to_fn = {
     "none": lambda x: x,
     "orthogonal": orthogonalize,
-    "laker": laker_special_sauce,
     "laker_pure_svd": laker_pure_svd,
+    "laker_approximate1": laker_special_sauce1,
+    "laker_approximate2": laker_special_sauce2,
+    "laker_approximate3": laker_special_sauce3,
+    "laker_approximate4": laker_special_sauce4,
+    "laker_approximate5": laker_special_sauce5,
 }
 
 def create_model(args):
@@ -63,7 +69,7 @@ def create_model(args):
         kwargs["output_dim"] = 10
         kwargs["input_dim"] = 32*32*3
         model = MLP(**kwargs) if not args.manifold else ManifoldMLP(**kwargs)
-        return Scalar(args.final_scale) @ model @ Flatten()
+        return args.final_scale * model @ Flatten()
     else:
         raise ValueError(f"Unknown dataset: {args.data}")
 

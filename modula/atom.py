@@ -44,23 +44,45 @@ def _laker_special_sauce(M):
         M = M.T
     return M
 
+def _laker_special_sauce2(M, alpha=0.01):
+    """Apply min(1, x) approximately to the singular values of a single matrix."""
+    coeffs = [
+        (1, -alpha),
+        (1, alpha),
+    ]
+    transpose = M.shape[1] > M.shape[0]
+    if transpose:
+        M = M.T
+    for a, b in coeffs:
+        A = M.T @ M
+        I = jnp.eye(A.shape[0])
+        M = M @ (a * I + b * A)
+    if transpose:
+        M = M.T
+    return M
+
 def _laker_pure_svd(M):
     """Apply min(1, x) exactly to the singular values of a single matrix."""
     U, S, Vh = jnp.linalg.svd(M, full_matrices=False)
     S = jnp.clip(S, a_max=1)
     return U @ jnp.diag(S) @ Vh
 
+# Define batch versions of the project functions (as functions so they can be imported)
 def orthogonalize(M):
-    """Batch orthogonalize tensors of shape [..., fanout, fanin]."""
     return batch_project(M, _orthogonalize)
-
-def laker_special_sauce(M):
-    """Batch special sauce tensors of shape [..., fanout, fanin]."""
+def laker_special_sauce1(M):
     return batch_project(M, _laker_special_sauce)
-
+def laker_special_sauce2(M):
+    return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.002))
+def laker_special_sauce3(M):
+    return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.01))
+def laker_special_sauce4(M):
+    return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.05))
+def laker_special_sauce5(M):
+    return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.1))
 def laker_pure_svd(M):
-    """Batch pure SVD tensors of shape [..., fanout, fanin]."""
     return batch_project(M, _laker_pure_svd)
+
 
 class Linear(Atom):
     def __init__(self, fanout, fanin, zero_init=False, project=None, tracker=None):
