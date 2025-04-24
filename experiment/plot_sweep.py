@@ -13,7 +13,7 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter, LogLocator
 from collections import defaultdict
 
 
-results_dir = Path('results-3-combined-results')
+results_dir = Path('results-6-cifar-w512-nonrandom-50-epochs')
 
 # Set global font sizes
 plt.rcParams.update({
@@ -95,13 +95,14 @@ def sort_as_numbers(values):
 project_prefix = {
     json.dumps({"default": "none"}): "none",
     json.dumps({"default": "orthogonal"}): "ortho",
-    json.dumps({"default": "laker_pure_svd"}): "all_laker",
-    json.dumps({"default": "laker_approximate"}): "all_l_appx",
-    json.dumps({"default": "laker_approximate1"}): "all_l_appx1",
-    json.dumps({"default": "laker_approximate2"}): "all_l_appx2",
-    json.dumps({"default": "laker_approximate3"}): "all_l_appx3",
-    json.dumps({"default": "laker_approximate4"}): "all_l_appx4",
-    json.dumps({"default": "laker_approximate5"}): "all_l_appx5",
+    json.dumps({"default": "laker_pure_svd"}): "all_svd",
+    json.dumps({"default": "laker_approximate"}): "all_appx",
+    json.dumps({"default": "laker_approximate1"}): "all_appx1",
+    json.dumps({"default": "laker_approximate2"}): "all_appx2",
+    json.dumps({"default": "laker_approximate3"}): "all_appx3",
+    json.dumps({"default": "laker_approximate4"}): "softcap_0.05",
+    json.dumps({"default": "laker_approximate4_float64"}): "softcap_0.05_float64",
+    json.dumps({"default": "laker_approximate5"}): "softcap_0.1",
     json.dumps({"default": "orthogonal", "mlp_out": "laker_pure_svd"}): "last_laker",
 }
 
@@ -118,7 +119,7 @@ results = [{k: panel_prefix[k](v) if k in panel_prefix and k == "project" else v
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
 panel_list = ['project']
-panel_filter = lambda x: x['weight_decay'] == 0.1
+panel_filter = lambda x: x['weight_decay'] == 0.03 if x['project'] == 'none' else x['weight_decay'] == 0.0
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
 x_string = 'final_scale' #'weight_decay'  # width, depth, batch_size
@@ -264,7 +265,7 @@ for use_test_loss, use_accuracy in use_test_loss_and_accuracy:
 
     aggregator_last = lambda x: x[-1]   # this is the brutal honesty option
     aggregator_smooth = lambda x: max(x) if use_accuracy else min(x)   # this one papers over overfitting
-    aggregator = aggregator_last if not plot_last else aggregator_smooth
+    aggregator = aggregator_last if plot_last else aggregator_smooth
 
     GIF_MODE = False
     FPS = 5
@@ -281,7 +282,7 @@ for use_test_loss, use_accuracy in use_test_loss_and_accuracy:
         ('shakespeare', False): (1, 3),
         ('shakespeare', True): (20, 70),
         ('cifar', False): (1e-1, 2) if not use_test_loss else (1, 2),
-        ('cifar', True): (40, 60),
+        ('cifar', True): (50, 70),
         ('fineweb', False): (3, 8),
         ('fineweb', True): (40, 60),
     }

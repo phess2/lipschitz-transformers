@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 from modula.compound import GPT, MLP, OrthogonalGPT, ManifoldMLP
 from modula.bond import Flatten
-from modula.atom import Scalar, orthogonalize, laker_pure_svd, laker_special_sauce1, laker_special_sauce2, laker_special_sauce3, laker_special_sauce4, laker_special_sauce5
+from modula.atom import Scalar, orthogonalize, laker_pure_svd, laker_special_sauce1, laker_special_sauce2, laker_special_sauce3, laker_special_sauce4, laker_special_sauce4_float64, laker_special_sauce5
 
 np.random.seed(0)
 
@@ -39,9 +39,7 @@ def load_data(args):
     elif args.data == "shakespeare":
         data = load_shakespeare(args.seq_len, args.batch_size)
     elif args.data == "cifar":
-        data = load_cifar10(args.batch_size, randomize_labels=False)
-    elif args.data == "cifar-random":
-        data = load_cifar10(args.batch_size, randomize_labels=True)
+        data = load_cifar10(args.batch_size, randomize_labels=args.randomize_labels)
     else:
         raise ValueError(f"Unknown dataset: {args.data}")
     return data["train_loader"], data["test_loader"], data["loss"]
@@ -54,6 +52,7 @@ project_str_to_fn = {
     "laker_approximate2": laker_special_sauce2,
     "laker_approximate3": laker_special_sauce3,
     "laker_approximate4": laker_special_sauce4,
+    "laker_approximate4_float64": laker_special_sauce4_float64,
     "laker_approximate5": laker_special_sauce5,
 }
 
@@ -90,6 +89,7 @@ def train(args):
     losses = []
     val_losses = []
     accuracies = []
+    train_accuracies = []  # Add tracking for train accuracies
     num_params = sum(jnp.prod(jnp.array(p.shape)) for p in w).item()
     print_log(f"Training with {num_params} parameters", args.job_idx)
 
@@ -148,7 +148,14 @@ def train(args):
             steps_remaining = (args.steps - step) * (1 + args.val_iters / args.val_interval)
             eta_seconds = (time.time() - start_time) * steps_remaining / steps_done
             eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
-            print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f} ETA:{eta_str}", args.job_idx)
+            
+            # Calculate training accuracy
+            logits = model(inputs, w)
+            train_preds = jnp.argmax(logits, axis=-1)
+            train_acc = jnp.mean(train_preds == targets)
+            train_accuracies.append(float(train_acc))
+            
+            print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f} train_acc:{train_acc:.4f} ETA:{eta_str}", args.job_idx)
                 
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
             log = model.log(w, d_w)
@@ -178,6 +185,7 @@ def train(args):
     log["losses"] = losses
     log["val_losses"] = val_losses
     log["accuracies"] = accuracies
+    log["train_accuracies"] = train_accuracies
     log["total_time"] = time.time() - start_time
     return log
 

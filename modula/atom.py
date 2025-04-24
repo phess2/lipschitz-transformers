@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+#jax.config.update("jax_enable_x64", True)
 
 from modula.abstract import Atom
 
@@ -16,6 +17,7 @@ def _orthogonalize(M):
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
+    M = M.astype(jnp.bfloat16)
     M = M / (jnp.linalg.norm(M) + 1e-12)
     for _ in range(10):
         A = M.T @ M
@@ -23,7 +25,7 @@ def _orthogonalize(M):
         M = M @ (a * I + b * A + c * A @ A)
     if transpose:
         M = M.T
-    return M
+    return M.astype(jnp.float32)
 
 def _laker_special_sauce(M):
     """Apply min(1, x) approximately to the singular values of a single matrix."""
@@ -53,13 +55,33 @@ def _laker_special_sauce2(M, alpha=0.01):
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
+    dtype = jnp.bfloat16  # jnp.float8_e4m3fn
+    M = M.astype(dtype)
+    for a, b in coeffs:
+        A = M.T @ M
+        I = jnp.eye(A.shape[0], dtype=dtype)
+        M = M @ (a * I + b * A)
+    if transpose:
+        M = M.T
+    return M.astype(jnp.float32)
+
+def _laker_special_sauce2_float64(M, alpha=0.01):
+    """Apply min(1, x) approximately to the singular values of a single matrix."""
+    coeffs = [
+        (1, -alpha),
+        (1, alpha),
+    ]
+    transpose = M.shape[1] > M.shape[0]
+    if transpose:
+        M = M.T
+    M = M.astype(jnp.float64)
     for a, b in coeffs:
         A = M.T @ M
         I = jnp.eye(A.shape[0])
         M = M @ (a * I + b * A)
     if transpose:
         M = M.T
-    return M
+    return M.astype(jnp.float32)
 
 def _laker_pure_svd(M):
     """Apply min(1, x) exactly to the singular values of a single matrix."""
@@ -78,6 +100,8 @@ def laker_special_sauce3(M):
     return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.01))
 def laker_special_sauce4(M):
     return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.05))
+def laker_special_sauce4_float64(M):
+    return batch_project(M, lambda x: _laker_special_sauce2_float64(x, alpha=0.05))
 def laker_special_sauce5(M):
     return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.1))
 def laker_pure_svd(M):

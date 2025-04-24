@@ -9,7 +9,7 @@ dotenv.load_dotenv()
 optimizer_pre_post_lr = [
     #("adam", False, False, np.logspace(-3.5, -1.5, 8)),
     #("muon", False, True,  np.logspace(-1.5, 1.5, 8)), 
-    ("muon", False, True,  np.logspace(0, 3, 8)), 
+    ("muon", False, True,  [32])#np.logspace(-2, 0, 6)), 
 ]
 
 # just for extending the range a bit
@@ -18,7 +18,7 @@ optimizer_pre_post_lr = [
 #     ("muon", False, True,  np.logspace(-3, -2, 4)), 
 # ]
 
-d_embeds = [128]
+d_embeds = [512]
 project = [
     #{"default": "none"},
     #{"default": "orthogonal"},
@@ -26,18 +26,19 @@ project = [
     #{"default": "laker_approximate1"},
     #{"default": "laker_approximate2"},
     #{"default": "laker_approximate3"},
-    #{"default": "laker_approximate4"},
-    {"default": "laker_approximate5"},
+    {"default": "laker_approximate4"},
+    #{"default": "laker_approximate4_float64"},  # to use this option, need to set jax.config.update("jax_enable_x64", True) in modula/atom.py
+    #{"default": "laker_approximate5"},
     #{"default": "orthogonal", "mlp_out": "laker_pure_svd"},
 ]  # key: default or tracker string; value: none, orthogonal, laker, laker_pure_svd
 manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
 softmax_scales = [1] # these get squared
-final_scales = [32, 64, 128, 256, 512] #[0.25, 1, 4, 16, 64, 96, 112, 128, 144, 160, 256, 512] # these are linear
+final_scales = [256]#, 4, 16, 64, 256]#32, 64, 128, 256, 512] #[0.25, 1, 4, 16, 64, 96, 112, 128, 144, 160, 256, 512] # these are linear
 scales_learnable = [False]
 
-wd_base = np.array([0, 0.03, 0.1, 0.3])
+wd_base = np.array([0, 0.03, 0.1])#0, 0.03, 0.1, 0.3])
 wd_and_wdlr_power = [
     #(wd_base, 0),
     (wd_base, 1),
@@ -45,14 +46,15 @@ wd_and_wdlr_power = [
 ] # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
 
 seeds = [0]
-data = "cifar"      # fineweb, shakespeare, cifar, cifar-random
+data = "cifar"      # fineweb, shakespeare, cifar
 output_dir = "results"
+randomize_labels = True
 
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
 accum_steps = 8 if data == "fineweb" else 1
 vocab_size = 50304 if data == "fineweb" else 65
 
-epochs = 10
+epochs = 50
 epoch_steps = 50000 // batch_size
 steps = int(epochs * epoch_steps) if data == "cifar" else 10001
 beta1 = 0.9
@@ -109,6 +111,7 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                         'steps': steps,
                                                         'schedule': schedule,
                                                         'data': data,
+                                                        'randomize_labels': randomize_labels,
                                                         'seed': seed,
                                                         'log_interval': log_interval,
                                                         'val_interval': val_interval,
