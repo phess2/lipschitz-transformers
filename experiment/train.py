@@ -102,6 +102,7 @@ def train(args):
     schedule = {
         "linear": lambda step: (args.steps - step) / args.steps,
         "cosine": lambda step: 0.5 * (1 + jnp.cos(jnp.pi * step / args.steps)),
+        "sqrt": lambda step: 1/(1+(step // 512)**0.5), # 512 selected to match the paper https://arxiv.org/pdf/1912.02292
         "none": lambda step: 1
     }[args.schedule]
     running_loss = 0.0

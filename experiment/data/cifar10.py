@@ -149,6 +149,9 @@ def _load_cifar10_data(normalize=True, randomize_labels=False):
     """
     Loads the CIFAR-10 dataset with parallel processing.
     Returns: (train_images, train_labels, test_images, test_labels)
+
+    randomize_labels: float = 0.0 (True = 1.0, False = 0.0)
+        - proportion of labels to reshuffle in the training set
     """
     extracted_dir = _download_and_extract_cifar10()
 
@@ -175,8 +178,11 @@ def _load_cifar10_data(normalize=True, randomize_labels=False):
         test_images = test_images.astype(np.float32) / 255.0
     
     if randomize_labels:
+        randomize_labels = float(randomize_labels) # for backward compatibility, convert True to 1.0
         rng = np.random.default_rng()
-        train_labels = rng.permutation(train_labels)
+        n_reshuffled_indices = int(len(train_labels) * randomize_labels)
+        reshuffled_indices = np.random.choice(np.arange(len(train_labels)), size=n_reshuffled_indices, replace=False)
+        train_labels[reshuffled_indices] = rng.permutation(train_labels[reshuffled_indices])
 
     return train_images, train_labels, test_images, test_labels
 
