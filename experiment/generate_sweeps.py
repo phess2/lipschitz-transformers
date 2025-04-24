@@ -31,7 +31,6 @@ project = [
     #{"default": "laker_approximate5"},
     #{"default": "orthogonal", "mlp_out": "laker_pure_svd"},
 ]  # key: default or tracker string; value: none, orthogonal, laker, laker_pure_svd
-manifold = False   # if true, post_dualize must be true and pre_dualize must be false
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
 softmax_scales = [1] # these get squared
@@ -107,7 +106,6 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                         'accum_steps': accum_steps,
                                                         'zero_init': zero_init,
                                                         'project': proj,
-                                                        'manifold': manifold,
                                                         'steps': steps,
                                                         'schedule': schedule,
                                                         'data': data,

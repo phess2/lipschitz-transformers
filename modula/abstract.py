@@ -12,6 +12,7 @@ class Module:
         self.smooth = None          # is this module smooth?: bool
         self.sensitivity = None     # input Lipschitz estimate: float > 0
         self.mass = None            # proportional contribution of module toward feature learning of any supermodule: float >= 0
+        self.dtype = None           # data type: jax.numpy.dtype
 
     def __str__(self):
         string = self.__class__.__name__

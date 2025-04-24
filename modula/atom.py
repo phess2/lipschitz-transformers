@@ -109,17 +109,18 @@ def laker_pure_svd(M):
 
 
 class Linear(Atom):
-    def __init__(self, fanout, fanin, zero_init=False, project=None, tracker=None):
+    def __init__(self, fanout, fanin, dtype=jnp.float32, zero_init=False, project=None, tracker=None):
         super().__init__(tracker)
         self.fanin  = fanin
         self.fanout = fanout
+        self.dtype = dtype
         self.zero_init = zero_init
         self.smooth = True
         self.mass = 1
         self.sensitivity = 1
 
         self._project = lambda x: x
-        if tracker in project:
+        if tracker in project:  # project is a dictionary mapping tracker names to projection functions
             self._project = project[tracker]
         elif "default" in project:
             self._project = project["default"]
@@ -137,8 +138,8 @@ class Linear(Atom):
         if self.tracker is not None:
             self.log_info = {}
         if self.zero_init:
-            return [jnp.zeros((self.fanout, self.fanin))]
-        weight = jax.random.normal(key, shape=(self.fanout, self.fanin))
+            return [jnp.zeros((self.fanout, self.fanin), dtype=self.dtype)]
+        weight = jax.random.normal(key, shape=(self.fanout, self.fanin), dtype=self.dtype)
         return self.orthogonalize([weight])
     
     def project(self, w):
@@ -167,107 +168,6 @@ class Linear(Atom):
         return {self.tracker: self.log_info}
 
 
-class ManifoldLinear(Linear):
-    """Weight matrix constrained to be semiorthogonal."""
-    def __init__(self, fanout, fanin, tracker=None, project=None):
-        super().__init__(fanout, fanin, tracker)
-        
-    def dualize(self, grad_w, w=None, target_norm=1.0):
-        # To optimize on the Stiefel manifold, we'll follow
-        # https://docs.modula.systems/algorithms/manifold/orthogonal/
-
-        assert self.fanout == self.fanin, "Stiefel manifold optimization doesn't work for rectangular matrices (yet!)"
-        assert w is not None, "Stiefel manifold optimization requires a weight matrix"
-
-        grad, w = grad_w[0], w[0]
-        X = w.mT @ grad - grad.mT @ w
-        X = w @ self.project([X])[0]
-        return [X]
-    
-    def step(self, w, d_w, lr):
-        # See: https://docs.modula.systems/algorithms/manifold/orthogonal/
-        return [(w[0] - lr * d_w[0]) / (1 + lr**2)**0.5]
-
-class HeadedLinear(Linear):
-    """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
-    def __init__(self, num_heads, fanout, fanin, tracker=None):
-        super().__init__(fanout, fanin, tracker)
-        self.num_heads = num_heads
-    
-    def forward(self, x, w):
-        # x is shape [...fanin]
-        # w[0] is shape [heads, fanout, fanin]
-        # output is shape [...heads, fanout]
-        return jnp.einsum("...i, h o i -> ...h o", x, w[0])
-
-    def initialize(self, key):
-        if self.tracker is not None:
-            self.log_info = {}
-        weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
-        return self.project([weight])
-    
-    def log(self, w, grad_w):
-        if self.tracker is None:
-            return {}
-        
-        if "weight_norm" not in self.log_info:
-            self.log_info["weight_norm"] = []
-
-        max_norm = max([jnp.linalg.norm(w[0][i], ord=2) for i in range(self.num_heads)])
-        self.log_info["weight_norm"].append(max_norm * self.num_heads)
-        return {self.tracker: self.log_info}
-
-
-class ManifoldHeadedLinear(ManifoldLinear):
-    """Rank-3 tensor version of Linear so that dualize batches over the head dimension."""
-    def __init__(self, num_heads, fanout, fanin, tracker=None):
-        super().__init__(fanout, fanin, tracker)
-        self.num_heads = num_heads
-    
-    def forward(self, x, w):
-        # x is shape [...fanin]
-        # w[0] is shape [heads, fanout, fanin]
-        # output is shape [...heads, fanout]
-        return jnp.einsum("...i, h o i -> ...h o", x, w[0])
-
-    def initialize(self, key):
-        if self.tracker is not None:
-            self.log_info = {}
-        weight = jax.random.normal(key, shape=(self.num_heads, self.fanout, self.fanin))
-        return self.project([weight])
-    
-    def log(self, w, grad_w):
-        if self.tracker is None:
-            return {}
-        
-        if "weight_norm" not in self.log_info:
-            self.log_info["weight_norm"] = []
-
-        max_norm = max([jnp.linalg.norm(w[0][i], ord=2) for i in range(self.num_heads)])
-        self.log_info["weight_norm"].append(max_norm * self.num_heads)
-        return {self.tracker: self.log_info}
-
-class HeadedLinearOut(HeadedLinear):
-    def __init__(self, num_heads, fanout, fanin, tracker=None):
-        super().__init__(num_heads, fanout, fanin, tracker)
-
-    def forward(self, x, w):
-        # x is shape [...heads, fanin]
-        # w is shape [heads, fanout, fanin]
-        # output is shape [...heads, fanout]
-        return jnp.einsum("...h i, h o i -> ...h o", x, w[0])
-        
-
-class ManifoldHeadedLinearOut(ManifoldHeadedLinear):
-    def __init__(self, num_heads, fanout, fanin, tracker=None):
-        super().__init__(num_heads, fanout, fanin, tracker)
-
-    def forward(self, x, w):
-        # x is shape [...heads, fanin]
-        # w is shape [heads, fanout, fanin]
-        # output is shape [...heads, fanout]
-        return jnp.einsum("...h i, h o i -> ...h o", x, w[0])
-
 def sr_sinkhorn(g, steps=5):
     """
     Implementation of the Square-Root Sinkhorn algorithm,
@@ -290,8 +190,8 @@ def sr_sinkhorn(g, steps=5):
     return X
 
 class SinkhornLinear(Linear):
-    def __init__(self, fanout, fanin, tracker=None):
-        super().__init__(fanout, fanin, tracker)
+    def __init__(self, fanout, fanin, dtype=jnp.float32, tracker=None):
+        super().__init__(fanout, fanin, dtype, tracker)
         self.smooth = False
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
@@ -299,7 +199,7 @@ class SinkhornLinear(Linear):
         return [weight]
 
 class Embed(Atom):
-    def __init__(self, d_embed, num_embed, tracker=None):
+    def __init__(self, d_embed, num_embed, dtype=jnp.float32, tracker=None):
         super().__init__(tracker)
         self.num_embed = num_embed
         self.d_embed = d_embed
@@ -313,7 +213,7 @@ class Embed(Atom):
         return jnp.moveaxis(embed, 0, -1) # shape [x_shape, d_embed]
 
     def initialize(self, key):
-        weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed))
+        weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed), dtype=self.dtype)
         return self.project([weight])
 
     def project(self, w):
@@ -330,18 +230,19 @@ class Embed(Atom):
         return {}
 
 class Scalar(Atom):
-    def __init__(self, scale=1, tracker=None):
+    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
         super().__init__(tracker)
         self.smooth = True
         self.mass = 1
         self.sensitivity = 1
         self.scale = scale
+        self.dtype = dtype
 
     def forward(self, x, w):
         return x * w[0]
     
     def initialize(self, key):
-        return [jnp.ones(1) * self.scale]
+        return [jnp.ones(1, dtype=self.dtype) * self.scale]
     
     def project(self, w):
         return [jnp.sign(w[0]) * self.scale]  # multiplying by self.scale might break sensitivity guarantees
@@ -361,22 +262,22 @@ class Scalar(Atom):
         return {self.tracker: self.log_info}
 
 class SquareScalar(Scalar):
-    def __init__(self, scale=0, tracker=None):
-        super().__init__(scale=scale, tracker=tracker)
+    def __init__(self, scale=0, dtype=jnp.float32, tracker=None):
+        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
 
     def forward(self, x, w):
         return x * w[0]**2
 
 class ExpScalar(Scalar):
-    def __init__(self, scale=0, tracker=None):
-        super().__init__(scale=scale, tracker=tracker)
+    def __init__(self, scale=0, dtype=jnp.float32, tracker=None):
+        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
 
     def forward(self, x, w):
         return x * jnp.exp(w[0])
 
 class LearnableScalar(Scalar):
-    def __init__(self, scale=1, tracker=None):
-        super().__init__(scale=scale, tracker=tracker)
+    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
+        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
     
     def project(self, w):
         return [w[0]]
@@ -386,15 +287,15 @@ class LearnableScalar(Scalar):
         return [d_weight]
 
 class LearnableSquareScalar(LearnableScalar):
-    def __init__(self, scale=1, tracker=None):
-        super().__init__(scale=scale, tracker=tracker)
+    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
+        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
     
     def forward(self, x, w):
         return x * w[0]**2
 
 class LearnableExpScalar(LearnableScalar):
-    def __init__(self, scale=1, tracker=None):
-        super().__init__(scale=scale, tracker=tracker)
+    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
+        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
     
     def forward(self, x, w):
         return x * jnp.exp(w[0])

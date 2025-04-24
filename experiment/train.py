@@ -63,11 +63,11 @@ def create_model(args):
     kwargs["project"] = {marker: project_str_to_fn[project] for marker, project in args.project.items()}
 
     if args.data == "fineweb" or args.data == "shakespeare":
-        return GPT(**kwargs) if not args.manifold else OrthogonalGPT(**kwargs)
+        return GPT(**kwargs)
     elif args.data == "cifar":
         kwargs["output_dim"] = 10
         kwargs["input_dim"] = 32*32*3
-        model = MLP(**kwargs) if not args.manifold else ManifoldMLP(**kwargs)
+        model = MLP(**kwargs)
         return args.final_scale * model @ Flatten()
     else:
         raise ValueError(f"Unknown dataset: {args.data}")

@@ -60,7 +60,6 @@ if not cache_file.exists() or need_to_rebuild_cache():
                 'test_loss_history': data['results']['val_losses'],
                 'seed': data['parameters']['seed'],
                 'project': json.dumps(data['parameters']['project']),
-                'manifold': data['parameters']['manifold'],
                 'schedule': data['parameters']['schedule'],
                 'final_scale': data['parameters']['final_scale'],
                 'softmax_scale': data['parameters']['softmax_scale'],
