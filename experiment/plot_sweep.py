@@ -13,7 +13,7 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter, LogLocator
 from collections import defaultdict
 
 
-results_dir = Path('results-6-cifar-w512-nonrandom-50-epochs')
+results_dir = Path('results-3-combined-results')
 
 # Set global font sizes
 plt.rcParams.update({
@@ -118,7 +118,7 @@ results = [{k: panel_prefix[k](v) if k in panel_prefix and k == "project" else v
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
 panel_list = ['project']
-panel_filter = lambda x: x['weight_decay'] == 0.03 if x['project'] == 'none' else x['weight_decay'] == 0.0
+panel_filter = lambda x: x['weight_decay'] == 0.0
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
 x_string = 'final_scale' #'weight_decay'  # width, depth, batch_size

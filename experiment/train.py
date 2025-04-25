@@ -13,7 +13,7 @@ import time
 import psutil
 import jax
 import jax.numpy as jnp
-from modula.compound import GPT, MLP, OrthogonalGPT, ManifoldMLP
+from modula.compound import GPT, MLP
 from modula.bond import Flatten
 from modula.atom import Scalar, orthogonalize, laker_pure_svd, laker_special_sauce1, laker_special_sauce2, laker_special_sauce3, laker_special_sauce4, laker_special_sauce4_float64, laker_special_sauce5
 
@@ -39,7 +39,7 @@ def load_data(args):
     elif args.data == "shakespeare":
         data = load_shakespeare(args.seq_len, args.batch_size)
     elif args.data == "cifar":
-        data = load_cifar10(args.batch_size, randomize_labels=args.randomize_labels)
+        data = load_cifar10(args.batch_size, randomize_labels=args.randomize_labels, dtype=dtype_str_to_dtype[args.model_dtype])
     else:
         raise ValueError(f"Unknown dataset: {args.data}")
     return data["train_loader"], data["test_loader"], data["loss"]
@@ -56,11 +56,20 @@ project_str_to_fn = {
     "laker_approximate5": laker_special_sauce5,
 }
 
+dtype_str_to_dtype = {
+    "float8_e4m3fn": jnp.float8_e4m3fn,
+    "bfloat16": jnp.bfloat16,
+    "float32": jnp.float32,
+    "float64": jnp.float64,
+}
+
 def create_model(args):
     kwargs = args.copy()
 
     # set out the dictionary for which project function to apply for each layer
     kwargs["project"] = {marker: project_str_to_fn[project] for marker, project in args.project.items()}
+    kwargs["dtype"] = dtype_str_to_dtype[args.model_dtype]
+    kwargs["project_dtype"] = dtype_str_to_dtype[args.project_dtype]
 
     if args.data == "fineweb" or args.data == "shakespeare":
         return GPT(**kwargs)

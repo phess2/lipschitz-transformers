@@ -145,7 +145,7 @@ def _download_and_extract_cifar10():
     
     return extracted_dir
 
-def _load_cifar10_data(normalize=True, randomize_labels=False):
+def _load_cifar10_data(normalize=True, randomize_labels=False, dtype: jnp.dtype = jnp.float32):
     """
     Loads the CIFAR-10 dataset with parallel processing.
     Returns: (train_images, train_labels, test_images, test_labels)
@@ -174,8 +174,8 @@ def _load_cifar10_data(normalize=True, randomize_labels=False):
 
     if normalize:
         # Use JAX's parallel processing for normalization
-        train_images = train_images.astype(np.float32) / 255.0
-        test_images = test_images.astype(np.float32) / 255.0
+        train_images = train_images.astype(jnp.float32) / 255.0
+        test_images = test_images.astype(jnp.float32) / 255.0
     
     if randomize_labels:
         randomize_labels = float(randomize_labels) # for backward compatibility, convert True to 1.0
@@ -184,16 +184,16 @@ def _load_cifar10_data(normalize=True, randomize_labels=False):
         reshuffled_indices = np.random.choice(np.arange(len(train_labels)), size=n_reshuffled_indices, replace=False)
         train_labels[reshuffled_indices] = rng.permutation(train_labels[reshuffled_indices])
 
-    return train_images, train_labels, test_images, test_labels
+    return train_images.astype(dtype), train_labels, test_images.astype(dtype), test_labels
 
 def classification_loss(model, w, inputs, targets):
     logits = model(inputs, w)  # shape is [batch, num_classes]
     num_classes = logits.shape[-1]
-    one_hot_targets = jax.nn.one_hot(targets, num_classes)
+    one_hot_targets = jax.nn.one_hot(targets, num_classes, dtype=logits.dtype)
     return -jnp.sum(one_hot_targets * jax.nn.log_softmax(logits)) / inputs.shape[0]
 
 def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = True, 
-                 repeat: bool = True, randomize_labels: bool = False) -> Dict[str, Any]:
+                 repeat: bool = True, randomize_labels: bool = False, dtype: jnp.dtype = jnp.float32) -> Dict[str, Any]:
     """
     Load the CIFAR-10 dataset and create dataloaders.
     
@@ -210,7 +210,8 @@ def load_cifar10(batch_size: int = 128, shuffle: bool = True, normalize: bool = 
     # Load the raw data
     train_images, train_labels, test_images, test_labels = _load_cifar10_data(
         normalize=normalize,
-        randomize_labels=randomize_labels
+        randomize_labels=randomize_labels,
+        dtype=dtype
     )
     
     # Create datasets

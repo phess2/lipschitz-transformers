@@ -12,20 +12,21 @@ def batch_project(M, project_fn):
     return M_projected.reshape(M.shape) / len(M_flattened)
 
 def _orthogonalize(M):
-    """Orthogonalize a single matrix."""
+    """Orthogonalize a single matrix, always bfloat16."""
     a, b, c = 3.0, -3.2, 1.2
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
+    original_dtype = M.dtype
     M = M.astype(jnp.bfloat16)
     M = M / (jnp.linalg.norm(M) + 1e-12)
     for _ in range(10):
         A = M.T @ M
-        I = jnp.eye(A.shape[0])
+        I = jnp.eye(A.shape[0], dtype=M.dtype)
         M = M @ (a * I + b * A + c * A @ A)
     if transpose:
         M = M.T
-    return M.astype(jnp.float32)
+    return M.astype(original_dtype)
 
 def _laker_special_sauce(M):
     """Apply min(1, x) approximately to the singular values of a single matrix."""
@@ -40,7 +41,7 @@ def _laker_special_sauce(M):
         M = M.T
     for a, b, c in coeffs:
         A = M.T @ M
-        I = jnp.eye(A.shape[0])
+        I = jnp.eye(A.shape[0], dtype=M.dtype)
         M = M @ (a * I + b * A + c * A @ A)
     if transpose:
         M = M.T
@@ -55,15 +56,13 @@ def _laker_special_sauce2(M, alpha=0.01):
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
-    dtype = jnp.bfloat16  # jnp.float8_e4m3fn
-    M = M.astype(dtype)
     for a, b in coeffs:
         A = M.T @ M
-        I = jnp.eye(A.shape[0], dtype=dtype)
+        I = jnp.eye(A.shape[0], dtype=M.dtype)
         M = M @ (a * I + b * A)
     if transpose:
         M = M.T
-    return M.astype(jnp.float32)
+    return M
 
 def _laker_special_sauce2_float64(M, alpha=0.01):
     """Apply min(1, x) approximately to the singular values of a single matrix."""
@@ -74,14 +73,15 @@ def _laker_special_sauce2_float64(M, alpha=0.01):
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
+    original_dtype = M.dtype
     M = M.astype(jnp.float64)
     for a, b in coeffs:
         A = M.T @ M
-        I = jnp.eye(A.shape[0])
+        I = jnp.eye(A.shape[0], dtype=jnp.float64)
         M = M @ (a * I + b * A)
     if transpose:
         M = M.T
-    return M.astype(jnp.float32)
+    return M.astype(original_dtype)
 
 def _laker_pure_svd(M):
     """Apply min(1, x) exactly to the singular values of a single matrix."""
@@ -109,11 +109,12 @@ def laker_pure_svd(M):
 
 
 class Linear(Atom):
-    def __init__(self, fanout, fanin, dtype=jnp.float32, zero_init=False, project=None, tracker=None):
+    def __init__(self, fanout, fanin, dtype=jnp.float32, project_dtype=None, zero_init=False, project=None, tracker=None):
         super().__init__(tracker)
         self.fanin  = fanin
         self.fanout = fanout
         self.dtype = dtype
+        self.project_dtype = project_dtype
         self.zero_init = zero_init
         self.smooth = True
         self.mass = 1
@@ -144,8 +145,10 @@ class Linear(Atom):
     
     def project(self, w):
         weight = w[0]
+        casted = weight.astype(self.project_dtype)
         scale = jnp.sqrt(self.fanout / self.fanin)
-        return [self._project(weight / scale) * scale]
+        projected = scale * self._project(casted / scale)
+        return [projected.astype(self.dtype)]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
         d_weight = self.orthogonalize(grad_w)[0] * target_norm
@@ -157,7 +160,7 @@ class Linear(Atom):
         
         if "weight_norm" not in self.log_info:
             self.log_info["weight_norm"] = []
-        self.log_info["weight_norm"].append(jnp.linalg.norm(w[0], ord=2))
+        self.log_info["weight_norm"].append(jnp.linalg.norm(w[0].astype(jnp.float32), ord=2))
 
         
         if "cos_angle_w_with_d_w" not in self.log_info:

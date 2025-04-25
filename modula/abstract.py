@@ -13,6 +13,7 @@ class Module:
         self.sensitivity = None     # input Lipschitz estimate: float > 0
         self.mass = None            # proportional contribution of module toward feature learning of any supermodule: float >= 0
         self.dtype = None           # data type: jax.numpy.dtype
+        self.project_dtype = None   # data type of the projected weights: jax.numpy.dtype
 
     def __str__(self):
         string = self.__class__.__name__
