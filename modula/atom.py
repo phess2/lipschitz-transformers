@@ -28,13 +28,13 @@ def _orthogonalize(M):
         M = M.T
     return M.astype(original_dtype)
 
-def _laker_special_sauce(M):
-    """Apply min(1, x) approximately to the singular values of a single matrix."""
+def _hard_cap(M):
+    """Apply min(1, x) approximately to the singular values of a single matrix. Credit: Franz Cecista."""
     coeffs = [
-        (0.988281, 0.0917969, 0.0148315),
-        (1.00781, -0.0544434, 0.0498047),
-        (0.996094, 0.050293, -0.0375977),
-        (1.00781, -0.090332, 0.00268555)
+        (0.805032, 0.206361, -0.019763),
+        (0.649867, 0.162935, -0.011150),
+        (1.810259, -0.200265, 0.008251),
+        (1.004384, -0.183490, 0.014413),
     ]
     transpose = M.shape[1] > M.shape[0]
     if transpose:
@@ -47,7 +47,7 @@ def _laker_special_sauce(M):
         M = M.T
     return M
 
-def _laker_special_sauce2(M, alpha=0.01):
+def _soft_cap(M, alpha):
     """Apply min(1, x) approximately to the singular values of a single matrix."""
     coeffs = [
         (1, -alpha),
@@ -64,49 +64,38 @@ def _laker_special_sauce2(M, alpha=0.01):
         M = M.T
     return M
 
-def _laker_special_sauce2_float64(M, alpha=0.01):
-    """Apply min(1, x) approximately to the singular values of a single matrix."""
-    coeffs = [
-        (1, -alpha),
-        (1, alpha),
-    ]
-    transpose = M.shape[1] > M.shape[0]
-    if transpose:
-        M = M.T
-    original_dtype = M.dtype
-    M = M.astype(jnp.float64)
-    for a, b in coeffs:
-        A = M.T @ M
-        I = jnp.eye(A.shape[0], dtype=jnp.float64)
-        M = M @ (a * I + b * A)
-    if transpose:
-        M = M.T
-    return M.astype(original_dtype)
-
-def _laker_pure_svd(M):
+def _pure_svd(M):
     """Apply min(1, x) exactly to the singular values of a single matrix."""
     U, S, Vh = jnp.linalg.svd(M, full_matrices=False)
     S = jnp.clip(S, a_max=1)
     return U @ jnp.diag(S) @ Vh
 
 # Define batch versions of the project functions (as functions so they can be imported)
-def orthogonalize(M):
+def orthogonalize(M, **kwargs):
     return batch_project(M, _orthogonalize)
-def laker_special_sauce1(M):
-    return batch_project(M, _laker_special_sauce)
-def laker_special_sauce2(M):
-    return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.002))
-def laker_special_sauce3(M):
-    return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.01))
-def laker_special_sauce4(M):
-    return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.05))
-def laker_special_sauce4_float64(M):
-    return batch_project(M, lambda x: _laker_special_sauce2_float64(x, alpha=0.05))
-def laker_special_sauce5(M):
-    return batch_project(M, lambda x: _laker_special_sauce2(x, alpha=0.1))
-def laker_pure_svd(M):
-    return batch_project(M, _laker_pure_svd)
+def hard_cap(M, **kwargs):
+    return batch_project(M, _hard_cap)
+def soft_cap(M, alpha):
+    return batch_project(M, lambda x: _soft_cap(x, alpha=alpha))
+def soft_cap1(M, **kwargs):
+    return batch_project(M, lambda x: _soft_cap(x, alpha=0.002))
+def soft_cap2(M, **kwargs):
+    return batch_project(M, lambda x: _soft_cap(x, alpha=0.05))
+def soft_cap3(M, **kwargs):
+    return batch_project(M, lambda x: _soft_cap(x, alpha=0.1))
+def pure_svd(M, **kwargs):
+    return batch_project(M, _pure_svd)
 
+
+def soft_cap_coupling(w_max, wd, max_update_norm):
+    """Calculates the strength for soft cap that bounds singular values at w_max."""
+    k = w_max * (1 - wd) + max_update_norm
+    coeffs = jnp.array([-9 * k**9, 3 * k**7, -3 * k**5, 0, k - w_max])
+    roots = jnp.roots(coeffs, strip_zeros=False)
+    is_real = jnp.abs(roots.imag) < 1e-6
+    is_positive = roots.real > 0
+    padded_reals = jnp.where(is_real & is_positive, roots.real, jnp.ones_like(roots.real))
+    return jnp.min(padded_reals)
 
 class Linear(Atom):
     def __init__(self, fanout, fanin, dtype=jnp.float32, project_dtype=None, zero_init=False, project=None, tracker=None):
@@ -125,7 +114,7 @@ class Linear(Atom):
             self._project = project[tracker]
         elif "default" in project:
             self._project = project["default"]
-
+        
     def forward(self, x, w):
         # x shape is [..., fanin]
         weights = w[0]  # shape is [fanout, fanin]
@@ -143,11 +132,12 @@ class Linear(Atom):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin), dtype=self.dtype)
         return self.orthogonalize([weight])
     
-    def project(self, w):
+    def project(self, w, w_max=1.0, wd=0.0, max_update_norm=1.0):
         weight = w[0]
         casted = weight.astype(self.project_dtype)
         scale = jnp.sqrt(self.fanout / self.fanin)
-        projected = scale * self._project(casted / scale)
+        alpha = soft_cap_coupling(w_max, wd, max_update_norm)  # only some proj functions use this
+        projected = scale * self._project(casted / scale, alpha=alpha)
         return [projected.astype(self.dtype)]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):

@@ -35,6 +35,8 @@ class Module:
         self.forward = jax.jit(self.forward)
         self.project = jax.jit(self.project)
         self.dualize = jax.jit(self.dualize)
+        self.step = jax.jit(self.step)
+        self.decay_step_project = jax.jit(self.decay_step_project)
 
     def forward(self, x, w):
         # Input and weight list --> output
@@ -52,8 +54,12 @@ class Module:
         # Weight gradient list, weight list, and number --> dualized weight gradient list
         raise NotImplementedError
     
-    def step(self, w, d_w, lr):
-        # Weight list, update list, learning rate --> updated weight list
+    def step(self, w, d_w, lr, g=None):
+        # Weight list, update list, learning rate, raw gradient --> updated weight list
+        raise NotImplementedError
+    
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+        # Weight list, update list, weight norm max, weight decay, learning rate, target norm --> updated weight list
         raise NotImplementedError
     
     def log(self, w, grad_w):
@@ -82,14 +88,44 @@ class Module:
     def __call__(self, x, w):
         return self.forward(x, w)
 
+
+def _orthogonalize(M):
+    """Orthogonalize a single matrix, always bfloat16."""
+    a, b, c = 3.0, -3.2, 1.2
+    transpose = M.shape[1] > M.shape[0]
+    if transpose:
+        M = M.T
+    original_dtype = M.dtype
+    M = M.astype(jax.numpy.bfloat16)
+    M = M / (jax.numpy.linalg.norm(M) + 1e-12)
+    for _ in range(10):
+        A = M.T @ M
+        I = jax.numpy.eye(A.shape[0], dtype=M.dtype)
+        M = M @ (a * I + b * A + c * A @ A)
+    if transpose:
+        M = M.T
+    return M.astype(original_dtype)
+
 class Atom(Module):
     def __init__(self, tracker=None):
         super().__init__(tracker)
         self.atoms = 1
         self.bonds = 0
     
-    def step(self, w, d_w, lr):
-        return [w[0] - lr * d_w[0]]
+    def step(self, w, d_w, lr, g=None):
+        # d_w is the argmax of Tr(G^T T), the dual norm is the max
+        dual_norm = 1 if g is None else jax.numpy.linalg.norm(g[0], "nuc") # jax.numpy.sum(d_w[0] * g[0])  # target norm messes this up
+        return [w[0] - lr * dual_norm * d_w[0]]
+    
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+        # the weight update d_w already has norm target_norm
+        max_update_norm = lr * target_norm
+        w_decayed = w[0] * (1 - wd * max_update_norm)
+        w_stepped = w_decayed + max_update_norm * _orthogonalize(w[0]) # - lr * d_w[0]
+        w_projected = self.project([w_stepped], w_max=w_max, wd=wd * max_update_norm, max_update_norm=max_update_norm)
+        return w_projected
+        
+    
 
 class Bond(Module):
     def __init__(self):
@@ -107,7 +143,10 @@ class Bond(Module):
     def dualize(self, grad_w, w=None, target_norm=1.0):
         return []
     
-    def step(self, w, d_w, lr):
+    def step(self, w, d_w, lr, g=None):
+        return []
+    
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
         return []
     
     def log(self, w, grad_w):
@@ -156,15 +195,28 @@ class CompositeModule(Module):
             d_w = [0 * grad_weight for grad_weight in grad_w]
         return d_w
     
-    def step(self, w, d_w, lr):
+    def step(self, w, d_w, lr, g=None):
         if self.mass == 0:
             return w
         m0, m1 = self.children
         w0, w1 = w[:m0.atoms], w[m0.atoms:]
         d_w0, d_w1 = d_w[:m0.atoms], d_w[m0.atoms:]
-        step0 = m0.step(w0, d_w0, lr)
-        step1 = m1.step(w1, d_w1, lr)
+        g0, g1 = g[:m0.atoms] if g is not None else None, g[m0.atoms:] if g is not None else None
+        step0 = m0.step(w0, d_w0, lr, g0)
+        step1 = m1.step(w1, d_w1, lr, g1)
         return step0 + step1
+    
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+        if self.mass == 0:
+            return w
+        m0, m1 = self.children
+        w0 = w[:m0.atoms] if w is not None else None
+        w1 = w[m0.atoms:] if w is not None else None
+        d_w0 = d_w[:m0.atoms] if d_w is not None else None
+        d_w1 = d_w[m0.atoms:] if d_w is not None else None
+        w0 = m0.decay_step_project(w0, d_w0, w_max, wd, lr, target_norm = target_norm * m0.mass / self.mass / m1.sensitivity)
+        w1 = m1.decay_step_project(w1, d_w1, w_max, wd, lr, target_norm = target_norm * m1.mass / self.mass)
+        return w0 + w1
 
     def log(self, w, grad_w):
         m0, m1 = self.children
@@ -207,6 +259,7 @@ class TupleModule(Module):
             w = w[m.atoms:]
         return projected_w
 
+
     def dualize(self, grad_w, w=None, target_norm=1.0):
         if self.mass > 0:
             d_w = []
@@ -221,18 +274,34 @@ class TupleModule(Module):
             d_w = [0 * grad_weight for grad_weight in grad_w]
         return d_w
     
-    def step(self, w, d_w, lr):
+    def step(self, w, d_w, lr, g=None):
         if self.mass == 0:
             return w
         steps = []
         for m in self.children:
             w_m = w[:m.atoms]
             d_w_m = d_w[:m.atoms]
-            step_m = m.step(w_m, d_w_m, lr)
+            g_m = g[:m.atoms] if g is not None else None
+            step_m = m.step(w_m, d_w_m, lr, g_m)
             steps += step_m
             w = w[m.atoms:]
             d_w = d_w[m.atoms:]
+            g = g[m.atoms:] if g is not None else None
         return steps
+    
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+        if self.mass == 0:
+            return w
+        steps = []
+        for m in self.children:
+            w_m = w[:m.atoms]
+            d_w_m = d_w[:m.atoms]
+            w_m = m.decay_step_project(w_m, d_w_m, w_max, wd, lr, target_norm = target_norm * m.mass / self.mass)
+            steps += w_m
+            w = w[m.atoms:]
+            d_w = d_w[m.atoms:]
+        return steps
+    
     
     def log(self, w, grad_w):
         log_info = {}
