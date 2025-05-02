@@ -27,3 +27,9 @@ experiment/chrysalis
 experiment/dawn
 experiment/scales_plots
 experiment/.env
+
+outLogs/
+
+*.sh
+
+.vscode/
