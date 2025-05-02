@@ -89,6 +89,7 @@ def pure_svd(M, **kwargs):
 
 def soft_cap_coupling(w_max, wd, max_update_norm):
     """Calculates the strength for soft cap that bounds singular values at w_max."""
+    print("\t", w_max, wd, max_update_norm)
     k = w_max * (1 - wd) + max_update_norm
     coeffs = jnp.array([-9 * k**9, 3 * k**7, -3 * k**5, 0, k - w_max])
     roots = jnp.roots(coeffs, strip_zeros=False)
@@ -109,7 +110,7 @@ class Linear(Atom):
         self.mass = 1
         self.sensitivity = 1
 
-        self._project = lambda x: x
+        self._project = lambda x, **kwargs: x
         if tracker in project:  # project is a dictionary mapping tracker names to projection functions
             self._project = project[tracker]
         elif "default" in project:
@@ -136,7 +137,9 @@ class Linear(Atom):
         weight = w[0]
         casted = weight.astype(self.project_dtype)
         scale = jnp.sqrt(self.fanout / self.fanin)
-        alpha = soft_cap_coupling(w_max, wd, max_update_norm)  # only some proj functions use this
+        # max_update_norm is correct in the RMS->RMS induced norm,
+        # but we divide by scale to account for the effect it will have on casted / scale
+        alpha = soft_cap_coupling(w_max, wd, max_update_norm / scale)  # only some proj functions use this
         projected = scale * self._project(casted / scale, alpha=alpha)
         return [projected.astype(self.dtype)]
 
@@ -150,7 +153,8 @@ class Linear(Atom):
         
         if "weight_norm" not in self.log_info:
             self.log_info["weight_norm"] = []
-        self.log_info["weight_norm"].append(jnp.linalg.norm(w[0].astype(jnp.float32), ord=2))
+        fan_out, fan_in = w[0].shape
+        self.log_info["weight_norm"].append((fan_in/fan_out)**0.5 * jnp.linalg.norm(w[0].astype(jnp.float32), ord=2))
 
         
         if "cos_angle_w_with_d_w" not in self.log_info:
