@@ -9,7 +9,7 @@ def MLP(output_dim, input_dim, d_embed, num_blocks, dtype=None, project_dtype=No
         m = m @ Linear(d_embed, d_embed, **project_kwargs, tracker=f"mlp_{i}") @ ReLU()
     return m @ Linear(d_embed, input_dim, **project_kwargs, zero_init=zero_init, tracker="mlp_out")
 
-def Attention(num_heads, d_embed, d_query, d_value, dtype=None, project_dtype=None, zero_init=False, project=None, layer_idx=0):
+def Attention(num_heads, d_embed, d_query, d_value, dtype=None, project_dtype=None, softmax_scale=None, zero_init=False, project=None, layer_idx=0):
     """Multi-head attention"""
 
     project_kwargs = {"dtype": dtype, "project_dtype": project_dtype, "project": project}
@@ -18,10 +18,12 @@ def Attention(num_heads, d_embed, d_query, d_value, dtype=None, project_dtype=No
     V = SplitIntoHeads(num_heads) @ Linear(num_heads * d_value, d_embed, **project_kwargs, tracker=f"v{layer_idx}")
     W = Linear(d_embed, num_heads * d_value, **project_kwargs, zero_init=zero_init, tracker=f"w{layer_idx}") @ MergeHeads()
 
-    AttentionScores = Softmax() @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
+    AttentionScores = Softmax() @ Mul(softmax_scale) @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
     return W @ (1/3 * ApplyAttentionScores()) @ (V, AttentionScores)
 
-def GPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, dtype=None, project_dtype=None, softmax_scale=None, final_scale=None, residual_scale=None, scales_learnable=False, zero_init=False, project=None, max_embed_inflation_factor=1, **kwargs):
+def GPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, dtype=None, project_dtype=None,
+        softmax_scale=None, final_scale=None, residual_scale=None, scales_learnable=False, zero_init=False,
+        project=None, max_embed_inflation_factor=1, **kwargs):
     project_kwargs = {"dtype": dtype, "project_dtype": project_dtype, "project": project}
 
     embed = Embed(d_embed, vocab_size, dtype=dtype, max_inflation_factor=max_embed_inflation_factor, tracker="embed")
@@ -29,7 +31,7 @@ def GPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, dtype=None, p
 
     blocks = Identity()
     for i in range(num_blocks):
-        att = Attention(num_heads, d_embed, d_embed // num_heads, d_embed // num_heads, **project_kwargs, zero_init=zero_init, layer_idx=i)
+        att = Attention(num_heads, d_embed, d_embed // num_heads, d_embed // num_heads, **project_kwargs, softmax_scale=softmax_scale, zero_init=zero_init, layer_idx=i)
         linear_out = Linear(d_embed, 4*d_embed, **project_kwargs, zero_init=zero_init, tracker=f"mlp_out{i}")
         linear_in = Linear(4*d_embed, d_embed, **project_kwargs, tracker=f"mlp_in{i}")
         mlp = linear_out @ GeLU() @ linear_in
