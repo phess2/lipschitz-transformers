@@ -164,36 +164,6 @@ class Linear(Atom):
         return {self.tracker: self.log_info}
 
 
-def sr_sinkhorn(g, steps=5):
-    """
-    Implementation of the Square-Root Sinkhorn algorithm,
-    Algorithm 3 in https://arxiv.org/abs/2502.06742v1
-    """
-    X = g
-    m, n = X.shape
-
-    for _ in range(steps):
-        # Row-wise normalization
-        row_norms = jnp.linalg.norm(X, axis=1, keepdims=True)  # [m, 1]
-        row_norms = jnp.clip(row_norms, a_min=1e-8)
-        X = n**0.5 * X / row_norms
-
-        # Column-wise normalization
-        col_norms = jnp.linalg.norm(X, axis=0, keepdims=True)  # [1, n]
-        col_norms = jnp.clip(col_norms, a_min=1e-8)
-        X = m**0.5 * X / col_norms
-
-    return X
-
-class SinkhornLinear(Linear):
-    def __init__(self, fanout, fanin, dtype=jnp.float32, tracker=None):
-        super().__init__(fanout, fanin, dtype, tracker)
-        self.smooth = False
-
-    def dualize(self, grad_w, w=None, target_norm=1.0):
-        weight = sr_sinkhorn(grad_w[0]) * target_norm
-        return [weight]
-
 class Embed(Atom):
     def __init__(self, d_embed, num_embed, dtype=jnp.float32, max_inflation_factor=1, tracker=None):
         super().__init__(tracker)
@@ -235,78 +205,7 @@ class Embed(Atom):
             self.log_info["weight_norm"] = []
         self.log_info["weight_norm"].append(jnp.max(jnp.linalg.norm(w[0], axis=0, keepdims=True)) / jnp.sqrt(self.d_embed))
             
-        return {}
-
-class Scalar(Atom):
-    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
-        super().__init__(tracker)
-        self.smooth = True
-        self.mass = 1
-        self.sensitivity = 1
-        self.scale = scale
-        self.dtype = dtype
-
-    def forward(self, x, w):
-        return x * w[0]
-    
-    def initialize(self, key):
-        return [jnp.ones(1, dtype=self.dtype) * self.scale]
-    
-    def project(self, w):
-        return [jnp.sign(w[0]) * self.scale]  # multiplying by self.scale might break sensitivity guarantees
-    
-    def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = self.project(grad_w)[0] * target_norm
-        return [d_weight]
-    
-    def log(self, w, grad_w):
-        if self.tracker is None:
-            return {}
-        
-        if "scalar" not in self.log_info:
-            self.log_info["scalar"] = []
-
-        self.log_info["scalar"].append(w[0])
         return {self.tracker: self.log_info}
-
-class SquareScalar(Scalar):
-    def __init__(self, scale=0, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
-
-    def forward(self, x, w):
-        return x * w[0]**2
-
-class ExpScalar(Scalar):
-    def __init__(self, scale=0, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
-
-    def forward(self, x, w):
-        return x * jnp.exp(w[0])
-
-class LearnableScalar(Scalar):
-    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
-    
-    def project(self, w):
-        return [w[0]]
-    
-    def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = super().project(grad_w)[0] * target_norm
-        return [d_weight]
-
-class LearnableSquareScalar(LearnableScalar):
-    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
-    
-    def forward(self, x, w):
-        return x * w[0]**2
-
-class LearnableExpScalar(LearnableScalar):
-    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
-    
-    def forward(self, x, w):
-        return x * jnp.exp(w[0])
 
     
 if __name__ == "__main__":
