@@ -195,10 +195,11 @@ class SinkhornLinear(Linear):
         return [weight]
 
 class Embed(Atom):
-    def __init__(self, d_embed, num_embed, dtype=jnp.float32, tracker=None):
+    def __init__(self, d_embed, num_embed, dtype=jnp.float32, max_inflation_factor=1, tracker=None):
         super().__init__(tracker)
         self.num_embed = num_embed
         self.d_embed = d_embed
+        self.max_inflation_factor = max_inflation_factor
         self.smooth = True
         self.mass = 1
         self.sensitivity = 1
@@ -212,17 +213,28 @@ class Embed(Atom):
         weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed), dtype=self.dtype)
         return self.project([weight])
 
-    def project(self, w):
+    def project(self, w, **kwargs):
         weight = w[0]
         weight = weight / jnp.linalg.norm(weight, axis=0, keepdims=True) * jnp.sqrt(self.d_embed)
         return [weight]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = self.project(grad_w)[0] * target_norm
-        d_weight = jnp.nan_to_num(d_weight)
+        d_weight = grad_w[0]
+        inflation_factor = jnp.minimum(
+            self.max_inflation_factor,
+            jnp.sqrt(self.d_embed) / jnp.linalg.norm(d_weight, axis=0, keepdims=True)
+        )
+        d_weight = d_weight * inflation_factor
         return [d_weight]
     
     def log(self, w, grad_w):
+        if self.tracker is None:
+            return {}
+        
+        if "weight_norm" not in self.log_info:
+            self.log_info["weight_norm"] = []
+        self.log_info["weight_norm"].append(jnp.max(jnp.linalg.norm(w[0], axis=0, keepdims=True)) / jnp.sqrt(self.d_embed))
+            
         return {}
 
 class Scalar(Atom):

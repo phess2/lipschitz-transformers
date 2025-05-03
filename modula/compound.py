@@ -21,10 +21,10 @@ def Attention(num_heads, d_embed, d_query, d_value, dtype=None, project_dtype=No
     AttentionScores = Softmax() @ CausalMask() @ AttentionQK() @ Rope(d_query) @ (Q, K)
     return W @ (1/3 * ApplyAttentionScores()) @ (V, AttentionScores)
 
-def GPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, dtype=None, project_dtype=None, softmax_scale=None, final_scale=None, residual_scale=None, scales_learnable=False, zero_init=False, project=None, **kwargs):
+def GPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, dtype=None, project_dtype=None, softmax_scale=None, final_scale=None, residual_scale=None, scales_learnable=False, zero_init=False, project=None, max_embed_inflation_factor=1, **kwargs):
     project_kwargs = {"dtype": dtype, "project_dtype": project_dtype, "project": project}
 
-    embed = Embed(d_embed, vocab_size, dtype=dtype)
+    embed = Embed(d_embed, vocab_size, dtype=dtype, max_inflation_factor=max_embed_inflation_factor, tracker="embed")
     embed.tare()
 
     blocks = Identity()
