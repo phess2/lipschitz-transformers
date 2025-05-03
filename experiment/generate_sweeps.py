@@ -9,7 +9,7 @@ dotenv.load_dotenv()
 optimizer_pre_post_lr = [
     #("adam", False, False, np.logspace(-3.5, -1.5, 8)),
     #("muon", False, True,  np.logspace(-1.5, 1.5, 8)), 
-    ("muon", False, True,  [32])#np.logspace(-2, 0, 6)), 
+    ("muon", False, True, np.logspace(-3, 0, 16)), 
 ]
 
 # just for extending the range a bit
@@ -18,29 +18,30 @@ optimizer_pre_post_lr = [
 #     ("muon", False, True,  np.logspace(-3, -2, 4)), 
 # ]
 
-d_embeds = [512]
+d_embeds = [512] #[12*16]
 project = [
-    #{"default": "none"},
+    {"default": "none"},
     #{"default": "orthogonal"},
-    #{"default": "laker_pure_svd"},
-    #{"default": "laker_approximate1"},
-    #{"default": "laker_approximate2"},
-    #{"default": "laker_approximate3"},
-    {"default": "laker_approximate4"},
-    #{"default": "laker_approximate4_float64"},  # to use this option, need to set jax.config.update("jax_enable_x64", True) in modula/atom.py
-    #{"default": "laker_approximate5"},
-    #{"default": "orthogonal", "mlp_out": "laker_pure_svd"},
-]  # key: default or tracker string; value: none, orthogonal, laker, laker_pure_svd
+    #{"default": "hard_cap"},
+    {"default": "soft_cap"},
+    #{"default": "soft_cap1"},
+    #{"default": "soft_cap2"},
+    #{"default": "soft_cap3"},
+    #{"default": "pure_svd"},
+    #{"default": "orthogonal", "mlp_out": "pure_svd"},
+]  # key: default or tracker string; value: none, orthogonal, hard_cap, soft_cap1, soft_cap2, soft_cap3, pure_svd
 model_dtypes = ["float32"]   # options: float8_e4m3fn, bfloat16, float32, float64
-project_dtypes = ["bfloat16"]  # options: float8_e4m3fn, bfloat16, float32, float64
+project_dtypes = ["float32"]  # options: float8_e4m3fn, bfloat16, float32, float64
+dual_norms = [False]  # Default is False. If True, use full dual norm from steepest descent
+w_max = [10]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
 softmax_scales = [1] # these get squared
-final_scales = [256]#, 4, 16, 64, 256]#32, 64, 128, 256, 512] #[0.25, 1, 4, 16, 64, 96, 112, 128, 144, 160, 256, 512] # these are linear
+final_scales = [1]#, 4, 16, 64, 256]#32, 64, 128, 256, 512] #[0.25, 1, 4, 16, 64, 96, 112, 128, 144, 160, 256, 512] # these are linear
 scales_learnable = [False]
 
-wd_base = [0]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
-wd_and_wdlr_power = [
+wd_base = [0.1]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
+wd_and_wdlr_power = [  # wdlr_power is DISABLED -- due to linear coupling for soft cap
     #(wd_base, 0),
     (wd_base, 1),
     #(wd_base, 2),
@@ -49,13 +50,13 @@ wd_and_wdlr_power = [
 seeds = [0]
 data = "cifar"      # fineweb, shakespeare, cifar
 output_dir = "results"
-randomize_labels = True
+randomize_labels = 0   # label noise fraction (0 = no noise, 1 = randomize all)
 
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
 accum_steps = 8 if data == "fineweb" else 1
 vocab_size = 50304 if data == "fineweb" else 65
 
-epochs = 50
+epochs = 20
 epoch_steps = 50000 // batch_size
 steps = int(epochs * epoch_steps) if data == "cifar" else 10001
 beta1 = 0.9
@@ -75,52 +76,57 @@ val_iters = 200 if data == "fineweb" else 50
 combinations = []
 for proj in project:  # project must come first so parallel jobs take similar times
     for optimizer, pre, post, lrs in optimizer_pre_post_lr:
-        for lr in lrs:
-            for model_dtype in model_dtypes:
-                for project_dtype in project_dtypes:
-                    for softmax_scale in softmax_scales:
-                        for final_scale in final_scales:
-                            for residual_scale in residual_scales:
-                                for scale_learnable in scales_learnable:
-                                    for wds, wd_lr_power in wd_and_wdlr_power:
-                                        for wd in wds:
-                                            for d_embed in d_embeds:
-                                                for nheads in num_heads:
-                                                    for schedule in schedules:
-                                                        for seed in seeds:
-                                                            combinations.append({
-                                                                'd_embed': d_embed,
-                                                                'lr': lr,
-                                                                'wd': wd,
-                                                                'wd_lr_power': wd_lr_power,
-                                                                'num_blocks': num_blocks,
-                                                                'seq_len': seq_len,
-                                                                'num_heads': nheads,
-                                                                'softmax_scale': softmax_scale,
-                                                                'final_scale': final_scale,
-                                                                'residual_scale': residual_scale,
-                                                                'scales_learnable': scale_learnable,
-                                                                'optimizer': optimizer,
-                                                                'pre_dualize': pre,
-                                                                'post_dualize': post,
-                                                                'beta1': beta1,
-                                                                'beta2': beta2,
-                                                                'batch_size': batch_size,
-                                                                'accum_steps': accum_steps,
-                                                                'zero_init': zero_init,
-                                                                'project': proj,
-                                                                'model_dtype': model_dtype,
-                                                                'project_dtype': project_dtype,
-                                                                'steps': steps,
-                                                                'schedule': schedule,
-                                                                'data': data,
-                                                                'randomize_labels': randomize_labels,
-                                                                'seed': seed,
-                                                                'log_interval': log_interval,
-                                                                'val_interval': val_interval,
-                                                                'val_iters': val_iters,
-                                                                'output_dir': output_dir,
-                                                            })
+        for dual_norm in dual_norms:
+            assert not (dual_norm and not post)  # dual norm requires post-dualize
+            for lr in lrs:
+                for model_dtype in model_dtypes:
+                    for project_dtype in project_dtypes:
+                        for softmax_scale in softmax_scales:
+                            for final_scale in final_scales:
+                                for residual_scale in residual_scales:
+                                    for scale_learnable in scales_learnable:
+                                        for wmax in w_max:
+                                            for wds, wd_lr_power in wd_and_wdlr_power:
+                                                for wd in wds:
+                                                    for d_embed in d_embeds:
+                                                        for nheads in num_heads:
+                                                            for schedule in schedules:
+                                                                for seed in seeds:
+                                                                    combinations.append({
+                                                                        'd_embed': d_embed,
+                                                                        'lr': lr,
+                                                                        'wd': wd,
+                                                                        'wd_lr_power': wd_lr_power,
+                                                                        'num_blocks': num_blocks,
+                                                                        'seq_len': seq_len,
+                                                                        'num_heads': nheads,
+                                                                        'softmax_scale': softmax_scale,
+                                                                        'final_scale': final_scale,
+                                                                        'residual_scale': residual_scale,
+                                                                        'scales_learnable': scale_learnable,
+                                                                        'optimizer': optimizer,
+                                                                        'dual_norm': dual_norm,
+                                                                        'pre_dualize': pre,
+                                                                        'post_dualize': post,
+                                                                        'beta1': beta1,
+                                                                        'beta2': beta2,
+                                                                        'batch_size': batch_size,
+                                                                        'accum_steps': accum_steps,
+                                                                        'zero_init': zero_init,
+                                                                        'project': proj,
+                                                                        'w_max': wmax,
+                                                                        'model_dtype': model_dtype,
+                                                                        'project_dtype': project_dtype,
+                                                                        'steps': steps,
+                                                                        'schedule': schedule,
+                                                                        'data': data,
+                                                                        'randomize_labels': randomize_labels,
+                                                                        'seed': seed,
+                                                                        'log_interval': log_interval,
+                                                                        'val_interval': val_interval,
+                                                                        'val_iters': val_iters,
+                                                                        'output_dir': output_dir,
+                                                                    })
 
 # Save combinations to file
 root_path = os.getenv('ROOT_PATH')

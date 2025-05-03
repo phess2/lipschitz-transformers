@@ -15,13 +15,13 @@ import jax
 import jax.numpy as jnp
 from modula.compound import GPT, MLP
 from modula.bond import Flatten
-from modula.atom import Scalar, orthogonalize, laker_pure_svd, laker_special_sauce1, laker_special_sauce2, laker_special_sauce3, laker_special_sauce4, laker_special_sauce4_float64, laker_special_sauce5
+from modula.atom import *
 
 np.random.seed(0)
 
 from data.shakespeare import load_shakespeare
 from data.cifar10 import load_cifar10
-#from data.fineweb import load_fineweb
+from data.fineweb import load_fineweb
 
 max_log_priority = 1
 def print_log(message, job_idx, priority=0, indent=0):
@@ -47,13 +47,12 @@ def load_data(args):
 project_str_to_fn = {
     "none": lambda x: x,
     "orthogonal": orthogonalize,
-    "laker_pure_svd": laker_pure_svd,
-    "laker_approximate1": laker_special_sauce1,
-    "laker_approximate2": laker_special_sauce2,
-    "laker_approximate3": laker_special_sauce3,
-    "laker_approximate4": laker_special_sauce4,
-    "laker_approximate4_float64": laker_special_sauce4_float64,
-    "laker_approximate5": laker_special_sauce5,
+    "hard_cap": hard_cap,
+    "soft_cap": soft_cap,
+    "soft_cap1": soft_cap1,
+    "soft_cap2": soft_cap2,
+    "soft_cap3": soft_cap3,
+    "pure_svd": pure_svd,
 }
 
 dtype_str_to_dtype = {
@@ -72,6 +71,7 @@ def create_model(args):
     kwargs["project_dtype"] = dtype_str_to_dtype[args.project_dtype]
 
     if args.data == "fineweb" or args.data == "shakespeare":
+        kwargs["vocab_size"] = 50304 if args.data == "fineweb" else 65
         return GPT(**kwargs)
     elif args.data == "cifar":
         kwargs["output_dim"] = 10
@@ -141,15 +141,12 @@ def train(args):
         d_w = jax.tree.map(lambda m1, m2: m1 / (jnp.sqrt(m2) + 1e-12), buf1, buf2) if args.optimizer == "adam" else buf1
         d_w = model.dualize(d_w) if args.post_dualize else d_w
 
-        # Original coupling code (couples initial learning rate too)
-        # if args.wd_lr_power == 0: wd_step_size = schedule(step) # decoupled weight decay like in the original AdamW paper
-        # else: wd_step_size = (args.lr * schedule(step)) ** args.wd_lr_power # control the proportionality of weight decay to lr
-        
-        # Test coupling code (only couples the schedule step)
-        wd_step_size = args.lr * schedule(step) ** args.wd_lr_power
-        w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
-        w = model.step(w, d_w, args.lr * schedule(step))
-        w = model.project(w)
+        # Couples weight decay, optimizer step, and projection into one so they can share target_norm calculations
+        #wd_step_size = args.lr * schedule(step) ** args.wd_lr_power
+        w = model.decay_step_project(w, d_w, w_max=args.w_max, wd=args.wd, lr=args.lr * schedule(step))
+        #w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
+        #w = model.step(w, d_w, args.lr * schedule(step), g=grad_w if args.dual_norm else None)
+        #w = model.project(w, w_max=args.w_max, wd=args.wd * wd_step_size, target_norm=args.lr * schedule(step))
 
         running_loss += loss
         if step % args.log_interval == 0:

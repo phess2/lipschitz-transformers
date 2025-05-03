@@ -13,7 +13,7 @@ from matplotlib.ticker import ScalarFormatter, FuncFormatter, LogLocator
 from collections import defaultdict
 
 
-results_dir = Path('results-3-combined-results')
+results_dir = Path('results')
 
 # Set global font sizes
 plt.rcParams.update({
@@ -52,6 +52,7 @@ if not cache_file.exists() or need_to_rebuild_cache():
                 'pre_dualize': data['parameters']['pre_dualize'],
                 'post_dualize': data['parameters']['post_dualize'],
                 'optimizer': data['parameters']['optimizer'],
+                'dual_norm': data['parameters']['dual_norm'],
                 'weight_decay': data['parameters']['wd'],
                 'weight_decay_power': data['parameters']['wd_lr_power'],
                 'data': data['parameters']['data'],
@@ -60,6 +61,8 @@ if not cache_file.exists() or need_to_rebuild_cache():
                 'test_loss_history': data['results']['val_losses'],
                 'seed': data['parameters']['seed'],
                 'project': json.dumps(data['parameters']['project']),
+                'model_dtype': data['parameters']['model_dtype'],
+                'project_dtype': data['parameters']['project_dtype'],
                 'schedule': data['parameters']['schedule'],
                 'final_scale': data['parameters']['final_scale'],
                 'softmax_scale': data['parameters']['softmax_scale'],
@@ -94,34 +97,34 @@ def sort_as_numbers(values):
 project_prefix = {
     json.dumps({"default": "none"}): "none",
     json.dumps({"default": "orthogonal"}): "ortho",
-    json.dumps({"default": "laker_pure_svd"}): "all_svd",
-    json.dumps({"default": "laker_approximate"}): "all_appx",
-    json.dumps({"default": "laker_approximate1"}): "all_appx1",
-    json.dumps({"default": "laker_approximate2"}): "all_appx2",
-    json.dumps({"default": "laker_approximate3"}): "all_appx3",
-    json.dumps({"default": "laker_approximate4"}): "softcap_0.05",
-    json.dumps({"default": "laker_approximate4_float64"}): "softcap_0.05_float64",
-    json.dumps({"default": "laker_approximate5"}): "softcap_0.1",
-    json.dumps({"default": "orthogonal", "mlp_out": "laker_pure_svd"}): "last_laker",
+    json.dumps({"default": "pure_svd"}): "pure_svd",
+    json.dumps({"default": "soft_cap1"}): "softcap_0.01",
+    json.dumps({"default": "soft_cap2"}): "softcap_0.05",
+    json.dumps({"default": "soft_cap3"}): "softcap_0.1",
+    json.dumps({"default": "soft_cap"}): "softcap",
+    json.dumps({"default": "hard_cap"}): "hardcap",
+    json.dumps({"default": "orthogonal", "mlp_out": "pure_svd"}): "last_svd",
 }
 
 panel_prefix = {
     'optimizer': lambda x: x.capitalize(),
     'pre_dualize': lambda x: 'Pre' if x else '',
     'project': lambda x: project_prefix.get(x, x),
+    'dual_norm': lambda x: 'dual' if x else '',
     'weight_decay': lambda x: f'wd{x:.2f}',
     'weight_decay_power': lambda x: f'wdpow{int(x)}',
     'final_scale': lambda x: f'fs{int(x)}',
+    'project_dtype': lambda x: f"proj {x}",
 }
 
 results = [{k: panel_prefix[k](v) if k in panel_prefix and k == "project" else v for k, v in r.items()} for r in results]
 
 # Choose properties to make separate panels for, including an optional direct filter for all panels
-panel_list = ['project']
-panel_filter = lambda x: x['weight_decay'] == 0.0
+panel_list = ['project', 'project_dtype']
+panel_filter = lambda x: True#x['weight_decay'] == 0.0
 panels = sorted(list(set(tuple(r[axis] for axis in panel_list) for r in results if panel_filter(r))))
 # Choose what the color bar will sweep over
-x_string = 'final_scale' #'weight_decay'  # width, depth, batch_size
+x_string = 'final_scale' #'weight_decay'  # d_embed, depth, batch_size
 x_string_title = 'Final Scale' #'Weight Decay'  # Width, Depth, Batch Size
 data = results[0]['data']
 
@@ -280,7 +283,7 @@ for use_test_loss, use_accuracy in use_test_loss_and_accuracy:
     ylims = {  # keys are (data, use_accuracy)
         ('shakespeare', False): (1, 3),
         ('shakespeare', True): (20, 70),
-        ('cifar', False): (1e-1, 2) if not use_test_loss else (1, 2),
+        ('cifar', False): (1e-6, 2) if not use_test_loss else (1, 2),
         ('cifar', True): (50, 70),
         ('fineweb', False): (3, 8),
         ('fineweb', True): (40, 60),
@@ -329,8 +332,8 @@ for use_test_loss, use_accuracy in use_test_loss_and_accuracy:
             frames.append(padded)
         """
         
-        # Save GIF
-        imageio.mimsave(f'sweep_{test_string}_{accuracy_string}.gif', frames, fps=FPS)
+        # Save GIF in the results directory
+        imageio.mimsave(f'{results_dir}/_{test_string}_{accuracy_string}.gif', frames, fps=FPS)
         
         # Clean up frame files
         for frame_path in OUTPUT_DIR.glob('frame_*.png'):
@@ -339,4 +342,4 @@ for use_test_loss, use_accuracy in use_test_loss_and_accuracy:
 
     else:
         # Normal mode - just plot the final result
-        fig = plot_frame(save_path=f'sweep_{test_string}_{accuracy_string}.png')
+        fig = plot_frame(save_path=f'{results_dir}/_{test_string}_{accuracy_string}.png')
