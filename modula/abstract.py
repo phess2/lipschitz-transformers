@@ -121,7 +121,7 @@ class Atom(Module):
         # the weight update d_w already has norm target_norm
         max_update_norm = lr * target_norm
         w_decayed = w[0] * (1 - wd * max_update_norm)
-        w_stepped = w_decayed + max_update_norm * _orthogonalize(w[0]) # - lr * d_w[0]
+        w_stepped = w_decayed - lr * d_w[0]
         w_projected = self.project([w_stepped], w_max=w_max, wd=wd * max_update_norm, max_update_norm=max_update_norm)
         return w_projected
         

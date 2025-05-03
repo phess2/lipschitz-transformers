@@ -45,7 +45,7 @@ def load_data(args):
     return data["train_loader"], data["test_loader"], data["loss"]
 
 project_str_to_fn = {
-    "none": lambda x: x,
+    "none": lambda x, **kwargs: x,
     "orthogonal": orthogonalize,
     "hard_cap": hard_cap,
     "soft_cap": soft_cap,
