@@ -70,6 +70,16 @@ def _pure_svd(M):
     S = jnp.clip(S, a_max=1)
     return U @ jnp.diag(S) @ Vh
 
+def soft_cap_coupling(w_max, wd, max_update_norm):
+    """Calculates the strength for soft cap that bounds singular values at w_max."""
+    k = w_max * (1 - wd) + max_update_norm
+    coeffs = jnp.array([-9 * k**9, 3 * k**7, -3 * k**5, 0, k - w_max])
+    roots = jnp.roots(coeffs, strip_zeros=False)
+    is_real = jnp.abs(roots.imag) < 1e-6
+    is_nonnegative = roots.real >= 0
+    padded_reals = jnp.where(is_real & is_nonnegative, roots.real, jnp.ones_like(roots.real))
+    return jnp.min(padded_reals)
+
 # Define batch versions of the project functions (as functions so they can be imported)
 def orthogonalize(M, **kwargs):
     return batch_project(M, _orthogonalize)
@@ -86,16 +96,17 @@ def soft_cap3(M, **kwargs):
 def pure_svd(M, **kwargs):
     return batch_project(M, _pure_svd)
 
+# Embed
+def _embed_project(M, axis, max_inflation_factor):
+    """RMS normalize the rows of M, then clip at max_inflation_factor. M is [d_embed, num_embed]."""
+    rmsnorm_of_rows = jnp.linalg.norm(M, axis=axis, keepdims=True) / jnp.sqrt(M.shape[axis])
+    M = M / jnp.maximum(1 / max_inflation_factor, rmsnorm_of_rows)
+    return M
 
-def soft_cap_coupling(w_max, wd, max_update_norm):
-    """Calculates the strength for soft cap that bounds singular values at w_max."""
-    k = w_max * (1 - wd) + max_update_norm
-    coeffs = jnp.array([-9 * k**9, 3 * k**7, -3 * k**5, 0, k - w_max])
-    roots = jnp.roots(coeffs, strip_zeros=False)
-    is_real = jnp.abs(roots.imag) < 1e-6
-    is_nonnegative = roots.real >= 0
-    padded_reals = jnp.where(is_real & is_nonnegative, roots.real, jnp.ones_like(roots.real))
-    return jnp.min(padded_reals)
+def embed_project(M, max_inflation_factor, **kwargs):
+    return batch_project(M, lambda x: _embed_project(x, -2, max_inflation_factor))
+def unembed_project(M, max_inflation_factor, **kwargs):
+    return batch_project(M, lambda x: _embed_project(x, -1, max_inflation_factor))
 
 class Linear(Atom):
     def __init__(self, fanout, fanin, dtype=jnp.float32, project_dtype=None, zero_init=False, project=None, tracker=None):
@@ -143,8 +154,9 @@ class Linear(Atom):
         return [projected.astype(self.dtype)]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = self.orthogonalize(grad_w)[0] * target_norm
-        return [d_weight]
+        #print(f"Dualizing {self.tracker} {self.fanout} {self.fanin} has target_norm {target_norm}")
+        d_weight = self.orthogonalize(grad_w)[0]
+        return [d_weight * target_norm]
     
     def log(self, w, grad_w):
         if self.tracker is None:
@@ -154,6 +166,10 @@ class Linear(Atom):
             self.log_info["weight_norm"] = []
         fan_out, fan_in = w[0].shape
         self.log_info["weight_norm"].append((fan_in/fan_out)**0.5 * jnp.linalg.norm(w[0].astype(jnp.float32), ord=2))
+
+        if "raw_grad_norm" not in self.log_info:
+            self.log_info["raw_grad_norm"] = []
+        self.log_info["raw_grad_norm"].append(jnp.linalg.norm(grad_w[0].astype(jnp.float32), ord=2))
 
         
         if "cos_angle_w_with_d_w" not in self.log_info:
@@ -181,21 +197,18 @@ class Embed(Atom):
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed), dtype=self.dtype)
-        return self.project([weight])
-
+        weight = embed_project(weight, max_inflation_factor=1e9)  # always send to norm 1
+        return [weight]
+    
     def project(self, w, **kwargs):
         weight = w[0]
-        weight = weight / jnp.linalg.norm(weight, axis=0, keepdims=True) * jnp.sqrt(self.d_embed)
+        weight = embed_project(weight, max_inflation_factor=1)  # allow decaying to zero
         return [weight]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
         d_weight = grad_w[0]
-        inflation_factor = jnp.minimum(
-            self.max_inflation_factor,
-            jnp.sqrt(self.d_embed) / jnp.linalg.norm(d_weight, axis=0, keepdims=True)
-        )
-        d_weight = d_weight * inflation_factor
-        return [d_weight]
+        d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
+        return [d_weight * target_norm]
     
     def log(self, w, grad_w):
         if self.tracker is None:
@@ -206,6 +219,52 @@ class Embed(Atom):
         self.log_info["weight_norm"].append(jnp.max(jnp.linalg.norm(w[0], axis=0, keepdims=True)) / jnp.sqrt(self.d_embed))
             
         return {self.tracker: self.log_info}
+
+
+class Unembed(Atom):
+    def __init__(self, d_embed, num_embed, dtype=jnp.float32, max_inflation_factor=1, zero_init=False, tracker=None):
+        super().__init__(tracker)
+        self.num_embed = num_embed
+        self.d_embed = d_embed
+        self.max_inflation_factor = max_inflation_factor
+        self.zero_init = zero_init
+        self.smooth = True
+        self.mass = 1
+        self.sensitivity = 1
+        self.dtype = dtype
+
+    def forward(self, x, w):
+        weights = w[0]  # shape [d_embed, num_embed]
+        return x @ weights.transpose()  # shape [..., num_embed]
+
+    def initialize(self, key):
+        if self.zero_init:
+            return [jnp.zeros((self.num_embed, self.d_embed), dtype=self.dtype)]
+        weight = jax.random.normal(key, shape=(self.num_embed, self.d_embed), dtype=self.dtype)
+        weight = embed_project(weight, max_inflation_factor=1e9)
+        return [weight]
+
+    def project(self, w, **kwargs):
+        weight = w[0]
+        weight = embed_project(weight, max_inflation_factor=1)  # allow decaying to zero
+        return [weight]
+
+    def dualize(self, grad_w, w=None, target_norm=1.0):
+        #print(f"Dualizing {self.tracker} {self.num_embed} {self.d_embed} has target_norm {target_norm}")
+        d_weight = grad_w[0]
+        d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
+        return [d_weight * target_norm]
+    
+    def log(self, w, grad_w):
+        if self.tracker is None:
+            return {}
+        
+        if "weight_norm" not in self.log_info:
+            self.log_info["weight_norm"] = []
+        self.log_info["weight_norm"].append(jnp.max(jnp.linalg.norm(w[0], axis=1, keepdims=True)) / jnp.sqrt(self.d_embed))
+        
+        return {self.tracker: self.log_info}
+
 
     
 if __name__ == "__main__":

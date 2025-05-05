@@ -22,6 +22,38 @@ class GeLU(Bond):
     def forward(self, x, w):
         return jax.nn.gelu(x) / 1.1289  # 1.1289 is the max derivative of gelu(x)
 
+class Tanh(Bond):
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+
+    def forward(self, x, w):
+        return jax.nn.tanh(x)
+
+class RMSNorm(Bond):
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+
+    def forward(self, x, w):
+        var = jnp.mean(jnp.square(x), axis=-1, keepdims=True)
+        x_norm = x / jnp.sqrt(var + 1e-5)
+        return x_norm
+
+class LayerNorm(Bond):
+    def __init__(self):
+        super().__init__()
+        self.smooth = True
+        self.sensitivity = 1
+
+    def forward(self, x, w):
+        mean = jnp.mean(x, axis=-1, keepdims=True)
+        var = jnp.mean(jnp.square(x - mean), axis=-1, keepdims=True)
+        x_norm = (x - mean) / jnp.sqrt(var + 1e-5)
+        return x_norm
+
 class Flatten(Bond):
     def __init__(self):
         super().__init__()
@@ -83,7 +115,7 @@ class AttentionQK(Bond):
     def __init__(self):
         super().__init__()
         self.smooth = True
-        self.sensitivity = 1  # what is this sensitivity?
+        self.sensitivity = 1
     
     def forward(self, x, w):
         q, k = x  # both shape [batch, n_heads, seq_len, d_query]
@@ -96,7 +128,7 @@ class CausalMask(Bond):
     def __init__(self):
         super().__init__()
         self.smooth = True
-        self.sensitivity = 1  # what is this sensitivity?
+        self.sensitivity = 1
     
     def forward(self, x, w):
         scores = x

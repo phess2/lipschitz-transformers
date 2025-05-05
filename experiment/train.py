@@ -28,7 +28,8 @@ def print_log(message, job_idx, priority=0, indent=0):
     if priority > max_log_priority: return
 
     current_time = time.strftime("%H:%M:%S")
-    gpu_memory = jax.device_get(jax.devices()[0].memory_stats()['peak_bytes_in_use']) / 1024**3 if jax.devices() else -1
+    memory_stats = jax.device_get(jax.devices()[0].memory_stats())
+    gpu_memory = memory_stats['peak_bytes_in_use'] / 1024**3 if memory_stats else -1
     process = psutil.Process()
     ram_usage = process.memory_info().rss / 1024**3
     print(f"[{current_time} gpu {gpu_memory:.1f}G ram {ram_usage:.1f}G idx {job_idx}] {' '*4*indent}{message}")
@@ -76,8 +77,7 @@ def create_model(args):
     elif args.data == "cifar":
         kwargs["output_dim"] = 10
         kwargs["input_dim"] = 32*32*3
-        model = MLP(**kwargs)
-        return args.final_scale * model @ Flatten()
+        return MLP(**kwargs)
     else:
         raise ValueError(f"Unknown dataset: {args.data}")
 
@@ -117,6 +117,10 @@ def train(args):
     running_loss = 0.0
     start_time = time.time()
 
+    profile = False
+    if profile:
+        os.makedirs("profile", exist_ok=True)
+        jax.profiler.start_trace("profile")
     for inputs, targets in train_loader:
         loss, grad_w = loss_and_grad(w, inputs, targets)
         accum_grad = jax.tree.map(jnp.add, accum_grad, grad_w)
@@ -189,6 +193,9 @@ def train(args):
         if step >= args.steps:
             break
     
+    if profile:
+        jax.profiler.stop_trace()
+
     log["losses"] = losses
     log["val_losses"] = val_losses
     log["accuracies"] = accuracies

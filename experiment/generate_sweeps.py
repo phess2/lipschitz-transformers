@@ -7,16 +7,9 @@ import os
 dotenv.load_dotenv()
 
 optimizer_pre_post_lr = [
-    #("adam", False, False, np.logspace(-3.5, -1.5, 8)),
-    #("muon", False, True,  np.logspace(-1.5, 1.5, 8)), 
-    ("muon", False, True, np.logspace(-1, 2, 8)), 
+    #("adam", False, False, np.logspace(-4, -1, 12)),
+    ("muon", False, True, np.logspace(-2, 2, 16)), 
 ]
-
-# just for extending the range a bit
-# optimizer_pre_post_lr = [
-#     #("adam", False, False, np.logspace(-3.5, -1.5, 8)),
-#     ("muon", False, True,  np.logspace(-3, -2, 4)), 
-# ]
 
 d_embeds = [256] #[12*16]
 project = [
@@ -32,15 +25,16 @@ project = [
 ]  # key: default or tracker string; value: none, orthogonal, hard_cap, soft_cap1, soft_cap2, soft_cap3, pure_svd
 model_dtypes = ["float32"]   # options: float8_e4m3fn, bfloat16, float32, float64
 project_dtypes = ["float32"]  # options: float8_e4m3fn, bfloat16, float32, float64
-max_embed_inflation_factors = [2**20]#1, 16, 256, 4096]  # Caps the amount duality can increase each column of the embedding gradient
-w_max = [1]#[1, 4, 16]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
+max_embed_inflation_factors = [16]#, 64, 256]#1, 16, 256, 4096]  # Caps the amount duality can increase each column of the embedding gradient
+use_unembeds = [False]
+w_max = [2]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
 
-residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
-softmax_scales = [1] # these get squared
-final_scales = [1, 4, 16, 64, 256, 1024]#1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-blocks_masses = [5]  # [1, 5, 25]
+residual_scales = [1]  # (1 - a/num_blocks) * x + (a/num_blocks) * block(x)
+softmax_scale = 1
+final_scale = 1 #, 4, 16, 64, 256, 1024]#1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+blocks_masses = [4]#, 16, 64]  # [1, 5, 25]
 scales_learnable = [False]
-adamw_for_embeds = [True]
+layernorm_substitutes = ["rmsnorm"]  # none, tanh, rmsnorm, layernorm
 
 wd_base = [0]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
 wd_and_wdlr_power = [  # wdlr_power is DISABLED -- due to linear coupling for soft cap
@@ -51,7 +45,7 @@ wd_and_wdlr_power = [  # wdlr_power is DISABLED -- due to linear coupling for so
 
 seeds = [0]
 data = "shakespeare"      # fineweb, shakespeare, cifar
-output_dir = "results"
+output_dir = "results-layernormsub"
 randomize_labels = [0]   # label noise fraction (0 = no noise, 1 = randomize all)
 
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
@@ -59,17 +53,17 @@ accum_steps = 8 if data == "fineweb" else 1
 
 epochs = 20
 epoch_steps = 50000 // batch_size
-steps = int(epochs * epoch_steps) if data == "cifar" else 5000
-beta1 = 0.9
-beta2 = 0.95
+steps = int(epochs * epoch_steps) if data == "cifar" else 2000
+beta1s = [0.8, 0.9, 0.95, 0.99]
+beta2s = [0.9, 0.95, 0.99, 0.999]
 schedules = ["linear"]      # linear, cosine, or none
 
 num_blocks = 12 if data == "fineweb" else (3 if data == "shakespeare" else 3)
 seq_len = 1024 if data == "fineweb" else 256
-num_heads = [12] if data == "fineweb" else [4]
+num_heads = 12 if data == "fineweb" else 4
 zero_init = True
 
-log_interval = 10 if data == "fineweb" else (50 if data == "shakespeare" else epoch_steps // 4)
+log_interval = 10 if data == "fineweb" else (100 if data == "shakespeare" else epoch_steps // 4)
 val_interval = 100 if data == "fineweb" else (100 if data == "shakespeare" else epoch_steps // 2)
 val_iters = 200 if data == "fineweb" else 20
 
@@ -77,21 +71,25 @@ val_iters = 200 if data == "fineweb" else 20
 combinations = []
 for proj in project:  # project must come first so parallel jobs take similar times
     for optimizer, pre, post, lrs in optimizer_pre_post_lr:
-        for max_embed_inflation_factor in max_embed_inflation_factors:
-            for lr in lrs:
-                for model_dtype in model_dtypes:
-                    for project_dtype in project_dtypes:
-                        for softmax_scale in softmax_scales:
-                            for final_scale in final_scales:
-                                for residual_scale in residual_scales:
-                                    for scale_learnable in scales_learnable:
-                                        for blocks_mass in blocks_masses:
-                                            for wmax in w_max:
-                                                for wds, wd_lr_power in wd_and_wdlr_power:
-                                                    for wd in wds:
-                                                        for d_embed in d_embeds:
-                                                            for nheads in num_heads:
-                                                                for adamw_for_embed in adamw_for_embeds:
+        for lr in lrs:
+            for max_embed_inflation_factor in max_embed_inflation_factors:
+                for use_unembed in use_unembeds:
+                    for model_dtype in model_dtypes:
+                        for project_dtype in project_dtypes:
+                            for beta1 in beta1s:
+                                for beta2 in beta2s:
+                                    if beta1 >= beta2:
+                                        continue
+                                    #for softmax_scale in softmax_scales:
+                                    #for final_scale in final_scales:
+                                    for residual_scale in residual_scales:
+                                        for scale_learnable in scales_learnable:
+                                            for blocks_mass in blocks_masses:
+                                                for layernorm_substitute in layernorm_substitutes:
+                                                    for wmax in w_max:
+                                                        for wds, wd_lr_power in wd_and_wdlr_power:
+                                                            for wd in wds:
+                                                                for d_embed in d_embeds:
                                                                     for schedule in schedules:
                                                                         for randomize_label in randomize_labels:
                                                                             for seed in seeds:
@@ -102,15 +100,16 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                                                     'wd_lr_power': wd_lr_power,
                                                                                     'num_blocks': num_blocks,
                                                                                     'seq_len': seq_len,
-                                                                                    'num_heads': nheads,
+                                                                                    'num_heads': num_heads,
                                                                                     'softmax_scale': softmax_scale,
                                                                                     'final_scale': final_scale,
                                                                                     'residual_scale': residual_scale,
                                                                                     'scales_learnable': scale_learnable,
                                                                                     'blocks_mass': blocks_mass,
+                                                                                    'layernorm_substitute': layernorm_substitute,
                                                                                     'optimizer': optimizer,
                                                                                     'max_embed_inflation_factor': max_embed_inflation_factor,
-                                                                                    'adamw_for_embed': adamw_for_embed,
+                                                                                    'use_unembed': use_unembed,
                                                                                     'pre_dualize': pre,
                                                                                     'post_dualize': post,
                                                                                     'beta1': beta1,
@@ -133,11 +132,20 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                                                     'output_dir': output_dir,
                                                                                 })
 
-    # Save combinations to file
-    root_path = os.getenv('ROOT_PATH')
-    path = Path(root_path) / 'experiment' / 'sweep_configs'
-    path.mkdir(exist_ok=True)
-    with open(path / 'parameter_grid.json', 'w') as f:
-        json.dump(combinations, f, indent=2)
+# Save combinations to file
+root_path = os.getenv('ROOT_PATH')
+path = Path(root_path) / 'experiment' / 'sweep_configs'
+path.mkdir(exist_ok=True)
 
-    print(f"Generated {len(combinations)} combinations")
+# append to existing parameter_grid.json file
+existing_combinations = []
+if os.path.exists(path / 'parameter_grid.json'):
+    with open(path / 'parameter_grid.json', 'r') as f:
+        existing_combinations = json.load(f)
+new_combinations = existing_combinations + combinations
+with open(path / 'parameter_grid.json', 'w') as f:
+    json.dump(new_combinations, f, indent=2)
+
+print(f"Generated {len(combinations)} combinations")
+if len(new_combinations) > len(combinations):
+    print(f"\tFor a total of {len(new_combinations)} combinations")
