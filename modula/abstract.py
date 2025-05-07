@@ -76,11 +76,9 @@ class Module:
 
     def __mul__(self, scalar):
         assert scalar != 0, "cannot multiply a module by zero"
-        print("Mul here: scalar =", scalar)
         return self @ Mul(scalar)
 
     def __rmul__(self, scalar):
-        print("Rmul here: scalar =", scalar)
         return Mul(scalar) @ self
 
     def __pow__(self, n):
@@ -107,7 +105,6 @@ class Atom(Module):
         max_update_norm = lr * target_norm
         w_decayed = w[0] * (1 - wd * max_update_norm)
         w_stepped = w_decayed - lr * d_w[0]
-        #print("Decay-step-project here: target_norm =", target_norm)
         w_projected = self.project([w_stepped], w_max=w_max, wd=wd * max_update_norm, max_update_norm=max_update_norm)
         return w_projected
         

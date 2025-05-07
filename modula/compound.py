@@ -50,7 +50,8 @@ def GPT(vocab_size, num_heads, d_embed, num_blocks, blocks_mass=5, dtype=None, p
     blocks.tare(absolute=blocks_mass)
 
     if use_unembed:
-        out = Unembed(d_embed, vocab_size, dtype=dtype, max_inflation_factor=max_embed_inflation_factor, zero_init=zero_init, tracker="unembed")
+        out = Unembed(d_embed, vocab_size, dtype=dtype, max_inflation_factor=max_embed_inflation_factor, zero_init=zero_init, tracker="out")
     else:
-        out = Linear(vocab_size, d_embed, **project_kwargs, zero_init=zero_init, tracker="mlp_out")
+        out = Linear(vocab_size, d_embed, **project_kwargs, zero_init=zero_init, tracker="out")
+    out.tare()
     return final_scale * (out @ blocks @ embed)

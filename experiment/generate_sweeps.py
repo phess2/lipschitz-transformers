@@ -6,9 +6,11 @@ import os
 
 dotenv.load_dotenv()
 
+save_weights = True
+
 optimizer_pre_post_lr = [
-    #("adam", False, False, np.logspace(-4, -1, 12)),
-    ("muon", False, True, np.logspace(0, 1, 12)), 
+    #("adam", False, False, np.logspace(-3, -2, 12)),
+    ("muon", False, True, np.logspace(-1, 1, 12)), 
 ]
 
 d_embeds = [256] #[12*16]
@@ -32,7 +34,7 @@ w_max = [2]  # only affects soft_cap -- max weight norm to enforce (adaptive wei
 residual_scales = [1]  # (1 - a/num_blocks) * x + (a/num_blocks) * block(x)
 softmax_scale = 1
 final_scale = 1 #, 4, 16, 64, 256, 1024]#1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
-blocks_masses = [4]#, 16, 64]  # [1, 5, 25]
+blocks_masses = [32]#, 16, 64]  # [1, 5, 25]
 scales_learnable = [False]
 layernorm_substitutes = ["none"]  # none, tanh, rmsnorm, layernorm
 
@@ -50,6 +52,7 @@ randomize_labels = [0]   # label noise fraction (0 = no noise, 1 = randomize all
 
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
 accum_steps = 8 if data == "fineweb" else 1
+vocab_size = 50304 if data == "fineweb" else 65
 
 epochs = 20
 epoch_steps = 50000 // batch_size
@@ -125,10 +128,12 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                                                     'schedule': schedule,
                                                                                     'data': data,
                                                                                     'randomize_labels': randomize_label,
+                                                                                    'vocab_size': vocab_size,
                                                                                     'seed': seed,
                                                                                     'log_interval': log_interval,
                                                                                     'val_interval': val_interval,
                                                                                     'val_iters': val_iters,
+                                                                                    'save_weights': save_weights,
                                                                                     'output_dir': output_dir,
                                                                                 })
 

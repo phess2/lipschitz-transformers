@@ -85,7 +85,6 @@ def soft_cap_coupling(w_max, wd, max_update_norm):
     is_real = jnp.abs(roots.imag) < 1e-6
     is_nonnegative = roots.real >= 0
     padded_reals = jnp.where(is_real & is_nonnegative, roots.real, jnp.ones_like(roots.real))
-    #print(f"w_max: {w_max}, wd: {wd}, max_update_norm: {max_update_norm}, min(padded_reals): {jnp.min(padded_reals)}")
     return jnp.min(padded_reals)
 
 # Define batch versions of the project functions (as functions so they can be imported)
@@ -158,15 +157,12 @@ class Linear(Atom):
         scale = jnp.sqrt(self.fanout / self.fanin)
         # max_update_norm is correct in the RMS->RMS induced norm,
         # but we divide by scale to account for the effect it will have on casted / scale
-        #print(f"w_max: {w_max}, wd: {wd}, max_update_norm: {max_update_norm}, scale: {scale}")
         alpha = soft_cap_coupling(w_max, wd, max_update_norm / scale)  # only some proj functions use this
         projected = scale * self._project(casted / scale, alpha=alpha)
         return [projected.astype(self.dtype)]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
-        #print(f"Dualizing {self.tracker} {self.fanout} {self.fanin} has target_norm {target_norm}")
         d_weight = self.orthogonalize(grad_w)[0]
-        #print("linear dualize, shape", d_weight.shape, "target_norm", target_norm)
         return [d_weight * target_norm]
     
     def log(self, w, grad_w):
@@ -261,7 +257,6 @@ class Unembed(Atom):
         return [weight]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
-        #print(f"Dualizing {self.tracker} {self.num_embed} {self.d_embed} has target_norm {target_norm}")
         d_weight = grad_w[0]
         d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
         return [d_weight * target_norm]
