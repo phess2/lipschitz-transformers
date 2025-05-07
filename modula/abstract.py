@@ -74,11 +74,13 @@ class Module:
     def __add__(self, other):
         return Add() @ TupleModule((self, other))
 
-    def __mul__(self, other):
-        assert other != 0, "cannot multiply a module by zero"
-        return self @ Mul(other)
+    def __mul__(self, scalar):
+        assert scalar != 0, "cannot multiply a module by zero"
+        print("Mul here: scalar =", scalar)
+        return self @ Mul(scalar)
 
     def __rmul__(self, scalar):
+        print("Rmul here: scalar =", scalar)
         return Mul(scalar) @ self
 
     def __pow__(self, n):
@@ -88,23 +90,6 @@ class Module:
     def __call__(self, x, w):
         return self.forward(x, w)
 
-
-def _orthogonalize(M):
-    """Orthogonalize a single matrix, always bfloat16."""
-    a, b, c = 3.0, -3.2, 1.2
-    transpose = M.shape[1] > M.shape[0]
-    if transpose:
-        M = M.T
-    original_dtype = M.dtype
-    M = M.astype(jax.numpy.bfloat16)
-    M = M / (jax.numpy.linalg.norm(M) + 1e-12)
-    for _ in range(10):
-        A = M.T @ M
-        I = jax.numpy.eye(A.shape[0], dtype=M.dtype)
-        M = M @ (a * I + b * A + c * A @ A)
-    if transpose:
-        M = M.T
-    return M.astype(original_dtype)
 
 class Atom(Module):
     def __init__(self, tracker=None):
@@ -122,11 +107,10 @@ class Atom(Module):
         max_update_norm = lr * target_norm
         w_decayed = w[0] * (1 - wd * max_update_norm)
         w_stepped = w_decayed - lr * d_w[0]
+        #print("Decay-step-project here: target_norm =", target_norm)
         w_projected = self.project([w_stepped], w_max=w_max, wd=wd * max_update_norm, max_update_norm=max_update_norm)
         return w_projected
         
-    
-
 class Bond(Module):
     def __init__(self):
         super().__init__()
@@ -333,7 +317,7 @@ class Mul(Bond):
     def __init__(self, scalar):
         super().__init__()
         self.smooth = True
-        self.sensitivity = scalar
+        self.sensitivity = 1
 
     def forward(self, x, w):
         return x * self.sensitivity

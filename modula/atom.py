@@ -12,15 +12,22 @@ def batch_project(M, project_fn):
     return M_projected.reshape(M.shape) / len(M_flattened)
 
 def _orthogonalize(M):
-    """Orthogonalize a single matrix, always bfloat16."""
-    a, b, c = 3.0, -3.2, 1.2
+    """Orthogonalize a single matrix, always bfloat16. Credit for coefficients to @YouJiacheng and @leloykun."""
+    abc_list = [
+        (3955/1024, -8306/1024, 5008/1024),
+        (3735/1024, -6681/1024, 3463/1024),
+        (3799/1024, -6499/1024, 3211/1024),
+        (4019/1024, -6385/1024, 2906/1024),
+        (2677/1024, -3029/1024, 1162/1024),
+        (2172/1024, -1833/1024,  682/1024)
+    ]
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
     original_dtype = M.dtype
     M = M.astype(jnp.bfloat16)
     M = M / (jnp.linalg.norm(M) + 1e-12)
-    for _ in range(10):
+    for a, b, c in abc_list:
         A = M.T @ M
         I = jnp.eye(A.shape[0], dtype=M.dtype)
         M = M @ (a * I + b * A + c * A @ A)
@@ -78,6 +85,7 @@ def soft_cap_coupling(w_max, wd, max_update_norm):
     is_real = jnp.abs(roots.imag) < 1e-6
     is_nonnegative = roots.real >= 0
     padded_reals = jnp.where(is_real & is_nonnegative, roots.real, jnp.ones_like(roots.real))
+    #print(f"w_max: {w_max}, wd: {wd}, max_update_norm: {max_update_norm}, min(padded_reals): {jnp.min(padded_reals)}")
     return jnp.min(padded_reals)
 
 # Define batch versions of the project functions (as functions so they can be imported)
@@ -121,11 +129,12 @@ class Linear(Atom):
         self.sensitivity = 1
 
         self._project = lambda x, **kwargs: x
-        if tracker in project:  # project is a dictionary mapping tracker names to projection functions
-            self._project = project[tracker]
-        elif "default" in project:
-            self._project = project["default"]
-        
+        if project is not None:
+            if tracker in project:  # project is a dictionary mapping tracker names to projection functions
+                self._project = project[tracker]
+            elif "default" in project:
+                self._project = project["default"]
+
     def forward(self, x, w):
         # x shape is [..., fanin]
         weights = w[0]  # shape is [fanout, fanin]
@@ -149,6 +158,7 @@ class Linear(Atom):
         scale = jnp.sqrt(self.fanout / self.fanin)
         # max_update_norm is correct in the RMS->RMS induced norm,
         # but we divide by scale to account for the effect it will have on casted / scale
+        #print(f"w_max: {w_max}, wd: {wd}, max_update_norm: {max_update_norm}, scale: {scale}")
         alpha = soft_cap_coupling(w_max, wd, max_update_norm / scale)  # only some proj functions use this
         projected = scale * self._project(casted / scale, alpha=alpha)
         return [projected.astype(self.dtype)]
@@ -156,6 +166,7 @@ class Linear(Atom):
     def dualize(self, grad_w, w=None, target_norm=1.0):
         #print(f"Dualizing {self.tracker} {self.fanout} {self.fanin} has target_norm {target_norm}")
         d_weight = self.orthogonalize(grad_w)[0]
+        #print("linear dualize, shape", d_weight.shape, "target_norm", target_norm)
         return [d_weight * target_norm]
     
     def log(self, w, grad_w):
@@ -197,17 +208,17 @@ class Embed(Atom):
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed), dtype=self.dtype)
-        weight = embed_project(weight, max_inflation_factor=1e9)  # always send to norm 1
+        #weight = embed_project(weight, max_inflation_factor=1e9)  # always send to norm 1
         return [weight]
     
     def project(self, w, **kwargs):
         weight = w[0]
-        weight = embed_project(weight, max_inflation_factor=1)  # allow decaying to zero
+        #weight = embed_project(weight, max_inflation_factor=1)  # allow decaying to zero
         return [weight]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
         d_weight = grad_w[0]
-        d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
+        #d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
         return [d_weight * target_norm]
     
     def log(self, w, grad_w):

@@ -146,11 +146,11 @@ def train(args):
         d_w = model.dualize(d_w) if args.post_dualize else d_w
 
         # Couples weight decay, optimizer step, and projection into one so they can share target_norm calculations
-        #wd_step_size = args.lr * schedule(step) ** args.wd_lr_power
+        # wd_step_size = args.lr * schedule(step) ** args.wd_lr_power
         w = model.decay_step_project(w, d_w, w_max=args.w_max, wd=args.wd, lr=args.lr * schedule(step))
-        #w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
-        #w = model.step(w, d_w, args.lr * schedule(step), g=grad_w if args.dual_norm else None)
-        #w = model.project(w, w_max=args.w_max, wd=args.wd * wd_step_size, target_norm=args.lr * schedule(step))
+        # w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
+        # w = model.step(w, d_w, args.lr * schedule(step), g=grad_w if args.dual_norm else None)
+        # w = model.project(w, w_max=args.w_max, wd=args.wd * wd_step_size, target_norm=args.lr * schedule(step))
 
         running_loss += loss
         if step % args.log_interval == 0:
@@ -161,15 +161,15 @@ def train(args):
             eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
             
             # Calculate training accuracy
-            logits = model(inputs, w)
-            train_preds = jnp.argmax(logits, axis=-1)
-            train_acc = jnp.mean(train_preds == targets)
-            train_accuracies.append(float(train_acc))
+            #logits = model(inputs, w)
+            #train_preds = jnp.argmax(logits, axis=-1)
+            #train_acc = jnp.mean(train_preds == targets)
+            #train_accuracies.append(float(train_acc))
             
-            print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f} train_acc:{train_acc:.4f} ETA:{eta_str}", args.job_idx)
+            print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f} ETA:{eta_str}", args.job_idx)
                 
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
-            log = model.log(w, d_w)
+            #log = model.log(w, d_w)
             losses.append(float(interval_loss))
             running_loss = 0.0
         

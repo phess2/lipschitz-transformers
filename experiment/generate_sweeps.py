@@ -8,7 +8,7 @@ dotenv.load_dotenv()
 
 optimizer_pre_post_lr = [
     #("adam", False, False, np.logspace(-4, -1, 12)),
-    ("muon", False, True, np.logspace(-2, 2, 16)), 
+    ("muon", False, True, np.logspace(0, 1, 12)), 
 ]
 
 d_embeds = [256] #[12*16]
@@ -34,7 +34,7 @@ softmax_scale = 1
 final_scale = 1 #, 4, 16, 64, 256, 1024]#1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
 blocks_masses = [4]#, 16, 64]  # [1, 5, 25]
 scales_learnable = [False]
-layernorm_substitutes = ["rmsnorm"]  # none, tanh, rmsnorm, layernorm
+layernorm_substitutes = ["none"]  # none, tanh, rmsnorm, layernorm
 
 wd_base = [0]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
 wd_and_wdlr_power = [  # wdlr_power is DISABLED -- due to linear coupling for soft cap
@@ -45,7 +45,7 @@ wd_and_wdlr_power = [  # wdlr_power is DISABLED -- due to linear coupling for so
 
 seeds = [0]
 data = "shakespeare"      # fineweb, shakespeare, cifar
-output_dir = "results-layernormsub"
+output_dir = "results"
 randomize_labels = [0]   # label noise fraction (0 = no noise, 1 = randomize all)
 
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
@@ -54,8 +54,8 @@ accum_steps = 8 if data == "fineweb" else 1
 epochs = 20
 epoch_steps = 50000 // batch_size
 steps = int(epochs * epoch_steps) if data == "cifar" else 2000
-beta1s = [0.8, 0.9, 0.95, 0.99]
-beta2s = [0.9, 0.95, 0.99, 0.999]
+beta1s = [0.9]
+beta2s = [0.95]
 schedules = ["linear"]      # linear, cosine, or none
 
 num_blocks = 12 if data == "fineweb" else (3 if data == "shakespeare" else 3)
