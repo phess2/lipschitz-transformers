@@ -161,15 +161,15 @@ def train(args):
             eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
             
             # Calculate training accuracy
-            #logits = model(inputs, w)
-            #train_preds = jnp.argmax(logits, axis=-1)
-            #train_acc = jnp.mean(train_preds == targets)
-            #train_accuracies.append(float(train_acc))
+            logits = model(inputs, w)
+            train_preds = jnp.argmax(logits, axis=-1)
+            train_acc = jnp.mean(train_preds == targets)
+            train_accuracies.append(float(train_acc))
             
             print_log(f"Step:{step}/{args.steps} train_loss:{loss:.4f} ETA:{eta_str}", args.job_idx)
                 
             interval_loss = running_loss if step == 0 else running_loss / args.log_interval
-            #log = model.log(w, d_w)
+            log = model.log(w, d_w)
             losses.append(float(interval_loss))
             running_loss = 0.0
         
