@@ -204,17 +204,17 @@ class Embed(Atom):
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed), dtype=self.dtype)
-        #weight = embed_project(weight, max_inflation_factor=1e9)  # always send to norm 1
+        weight = embed_project(weight, max_inflation_factor=1e9)  # always send to norm 1
         return [weight]
     
     def project(self, w, **kwargs):
         weight = w[0]
-        #weight = embed_project(weight, max_inflation_factor=1)  # allow decaying to zero
+        weight = embed_project(weight, max_inflation_factor=1)  # allow decaying to zero
         return [weight]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
         d_weight = grad_w[0]
-        #d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
+        d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
         return [d_weight * target_norm]
     
     def log(self, w, grad_w):
@@ -248,17 +248,17 @@ class Unembed(Atom):
         if self.zero_init:
             return [jnp.zeros((self.num_embed, self.d_embed), dtype=self.dtype)]
         weight = jax.random.normal(key, shape=(self.num_embed, self.d_embed), dtype=self.dtype)
-        weight = embed_project(weight, max_inflation_factor=1e9)
+        weight = unembed_project(weight, max_inflation_factor=1e9)
         return [weight]
 
     def project(self, w, **kwargs):
         weight = w[0]
-        weight = embed_project(weight, max_inflation_factor=1)  # allow decaying to zero
+        weight = unembed_project(weight, max_inflation_factor=1)  # allow decaying to zero
         return [weight]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
         d_weight = grad_w[0]
-        d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
+        d_weight = unembed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
         return [d_weight * target_norm]
     
     def log(self, w, grad_w):
