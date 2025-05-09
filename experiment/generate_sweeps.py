@@ -6,11 +6,11 @@ import os
 
 dotenv.load_dotenv()
 
-save_weights = True
+num_checkpoints = 5   # 0 saves readable results file, 1 saves final weights, n>1 saves evenly spaced checkpoints
 
 optimizer_pre_post_lr = [
-    #("adam", False, False, np.logspace(-3, -2, 12)),
-    ("muon", False, True, np.logspace(-1, 1, 12)), 
+    #("adam", False, False, np.logspace(-4, -0.5, 12)),
+    ("muon", False, True, np.logspace(-2, 0, 12)), 
 ]
 
 d_embeds = [256] #[12*16]
@@ -28,7 +28,7 @@ model_dtypes = ["float32"]   # options: float8_e4m3fn, bfloat16, float32, float6
 project_dtypes = ["float32"]  # options: float8_e4m3fn, bfloat16, float32, float64
 max_embed_inflation_factors = [16]#, 64, 256]#1, 16, 256, 4096]  # Caps the amount duality can increase each column of the embedding gradient
 use_unembeds = [False]
-w_max = [2]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
+w_max = [2]#1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
 
 residual_scales = [1]  # (1 - a/num_blocks) * x + (a/num_blocks) * block(x)
 softmax_scale = 1
@@ -40,7 +40,7 @@ layernorm_substitutes = ["none"]  # none, tanh, rmsnorm, layernorm
 weight_decay = [0]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
 
 seeds = [0]
-data = "shakespeare"      # fineweb, shakespeare, cifar
+data = "cifar"      # fineweb, shakespeare, cifar
 output_dir = "results"
 randomize_labels = [0]   # label noise fraction (0 = no noise, 1 = randomize all)
 
@@ -48,7 +48,7 @@ batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
 accum_steps = 8 if data == "fineweb" else 1
 vocab_size = 50304 if data == "fineweb" else 65
 
-epochs = 20
+epochs = 50
 epoch_steps = 50000 // batch_size
 steps = int(epochs * epoch_steps) if data == "cifar" else 2000
 beta1s = [0.9]
@@ -125,7 +125,7 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                                                 'log_interval': log_interval,
                                                                                 'val_interval': val_interval,
                                                                                 'val_iters': val_iters,
-                                                                                'save_weights': save_weights,
+                                                                                'num_checkpoints': num_checkpoints,
                                                                                 'output_dir': output_dir,
                                                                             })
 

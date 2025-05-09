@@ -2,11 +2,12 @@
 #SBATCH --job-name=modula
 #SBATCH --output=logs/sweep_%A_%a.out
 #SBATCH --error=logs/sweep_%A_%a.err
-#SBATCH --array=0-11      # <<< set automatically to number of parameter combinations from generate_sweeps.py
+#SBATCH --array=0-431      # <<< set automatically to number of parameter combinations from generate_sweeps.py
 #SBATCH --gres=gpu:1       # Request 1 GPU per task
-#SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],sitzmann-4090-1,oliva-titanrtx-[1,3],freeman-titanrtx-[1-2],agrawal-v100-1,agrawal-2080ti-1,freeman-v100-[1-2],isola-titanrtx-1,isola-ada6000-1,huang-l40s-[1-2],beery-l40s-[1-4],sitzmann-l40s-1,agrawal-l40s-1,beery-a100-[1-2],improbablex00[1-9]
+##SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],sitzmann-4090-1,oliva-titanrtx-[1,3],freeman-titanrtx-[1-2],agrawal-v100-1,agrawal-2080ti-1,freeman-v100-[1-2],isola-titanrtx-1,isola-ada6000-1,huang-l40s-[1-2],beery-l40s-[1-4],sitzmann-l40s-1,agrawal-l40s-1,beery-a100-[1-2],improbablex00[1-9]
+#SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],sitzmann-4090-1,agrawal-v100-1,agrawal-2080ti-1,freeman-v100-[1-2],isola-ada6000-1,beery-a100-[1-2],improbablex00[1-9]
 ##SBATCH --nodelist=isola-2080ti-[1-4],isola-v100-[1-2],sitzmann-4090-1,agrawal-v100-1,agrawal-2080ti-1,freeman-v100-[1-2],isola-ada6000-1,improbablex00[1-9],huang-l40s-[1-2],beery-l40s-[1-4],sitzmann-l40s-1#,agrawal-l40s-1,beery-a100-[1-2]
-##SBATCH --nodelist=huang-l40s-[1-2],beery-l40s-[1-4],sitzmann-l40s-1,agrawal-l40s-1,beery-a100-[1-2]
+##SBATCH --nodelist=huang-l40s-[1-2],beery-l40s-[1-4],sitzmann-l40s-1,agrawal-l40s-1,beery-a100-[1-2],beery-a100-[1-2]
 ##SBATCH --nodelist=beery-a100-[1-2],isola-h100-1,agrawal-h100-1,isola-h200-1,agrawal-h200-1,sitzmann-h200-1,sitzmann-a100-1,freeman-a100-1
 #SBATCH --cpus-per-task=8
 #SBATCH --ntasks=1

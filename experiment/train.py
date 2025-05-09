@@ -1,10 +1,21 @@
 import os
 import sys
-with open(sys.argv[0]) as f:
-    code = f.read() # read the code of this file ASAP, for logging
-
 import glob
+
+# Read the code ASAP for reproducibility
+code = ""
+modula_dir = os.path.join(os.path.dirname(__file__), '../modula')
+modula_dir = os.path.abspath(modula_dir)
+files = sorted(glob.glob(os.path.join(modula_dir, '*.py'))) + [sys.argv[0]]
+for file in files:
+    with open(file, 'r') as f:
+        code += f"\n\n# ===== {os.path.basename(file)} =====\n" + f.read()
+
+with open(sys.argv[0]) as f:
+    code += f"\n\n# ===== {os.path.basename(sys.argv[0])} =====\n" + f.read()
+
 import json
+import copy
 import argparse
 from pathlib import Path
 from functools import partial
@@ -91,6 +102,7 @@ def train(args):
     key = jax.random.PRNGKey(args.seed)
     key, subkey = jax.random.split(key)
     w = model.initialize(subkey)
+    w_checkpoints = []
     log = {}
 
     losses = []
@@ -184,6 +196,9 @@ def train(args):
             val_losses.append(float(val_loss_sum / val_step))
             accuracies.append(float(val_acc_sum / val_step))
             print_log(f"Step:{step}/{args.steps} val_loss:{val_losses[-1]:.4f} val_acc:{accuracies[-1]:.4f}", args.job_idx, indent=1)
+        
+        if step > 0 and step % (args.steps // args.num_checkpoints) == 0:
+            w_checkpoints.append(copy.deepcopy(w))
 
         if step >= args.steps:
             break
@@ -196,7 +211,7 @@ def train(args):
     log["accuracies"] = accuracies
     log["train_accuracies"] = train_accuracies
     log["total_time"] = time.time() - start_time
-    return log, w
+    return log, w_checkpoints
 
 
 def calculate_lipschitz_constant(output: dict) -> float:
@@ -234,7 +249,7 @@ def calculate_lipschitz_constant(output: dict) -> float:
     L = L * L_unembed
     return L
 
-def save_results(results, args, weights):
+def save_results(results, args, weights_checkpoints):
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     timestamp_to_millisecond = time.strftime("%Y%m%d_%H%M%S") + f"{int(time.time() * 1000) % 1000:03d}"
@@ -242,7 +257,7 @@ def save_results(results, args, weights):
 
     uniqueness_hash = hash(json.dumps(args))
     filename = (
-        f"{args.data}_{args.optimizer}_"
+        f"_{args.data}_{args.optimizer}_"
         f"embed{args.d_embed}_lr{args.lr:.4f}_"
         f"wd{args.wd:.4f}_steps{args.steps}_"
         f"{abs(uniqueness_hash):x}.json"
@@ -267,22 +282,23 @@ def save_results(results, args, weights):
             return d
 
     # save results
-    if not args.save_weights:
-        output = jax_to_numpy(output)
-        output_path = Path(args.output_dir) / filename
-        with open(output_path, 'w') as f:
-            json.dump(output, f, indent=2)
-    else:
+    output = jax_to_numpy(output)
+    output_path = Path(args.output_dir) / filename
+    with open(output_path, 'w') as f:
+        json.dump(output, f, indent=2)
+
+    if args.num_checkpoints > 0:
         # save model args as json and weights as npz
         model_dict = {
             "args": args,
             "results": results,
-            "weights": {i: w for i, w in enumerate(weights)}
         }
+        for i, checkpoint in enumerate(weights_checkpoints):
+            model_dict[f"weights_checkpoint_{i}"] = {i: w for i, w in enumerate(checkpoint)}
         model_dict = jax_to_numpy(model_dict)
-        model_path = Path(args.output_dir) / f"{args.data}_{args.optimizer}_val_loss_{results['val_losses'][-1]:.3f}_lipschitz_{lipschitz_constant:.3f}.npz"
+        model_path = Path(args.output_dir) / f"{args.data}_{args.optimizer}_val_loss_{results['val_losses'][-1]:.3f}_acc_{results['accuracies'][-1]:.3f}_lipschitz_{lipschitz_constant:.3f}.npz"
         np.savez_compressed(model_path, **model_dict, allow_pickle=True)
-        print_log(f"Model saved to {model_path}", args.job_idx)
+        print_log(f"Checkpoints saved to {model_path}", args.job_idx)
 
 class DotDict(dict):
     def __getattr__(self, key):
@@ -316,8 +332,8 @@ def main():
     for key, value in args.items():
         print_log(f"{key}: {value}", args.job_idx)
 
-    results, weights = train(args)    
-    save_results(results, args, weights)
+    results, weights_checkpoints = train(args)    
+    save_results(results, args, weights_checkpoints)
 
 if __name__ == "__main__":
     main()

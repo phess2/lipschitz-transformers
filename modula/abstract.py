@@ -314,7 +314,7 @@ class Mul(Bond):
     def __init__(self, scalar):
         super().__init__()
         self.smooth = True
-        self.sensitivity = 1
+        self.sensitivity = scalar
 
     def forward(self, x, w):
         return x * self.sensitivity

@@ -7,10 +7,11 @@ import time
 
 model_path = "results/shakespeare_muon_val_loss_1.221_lipschitz_4.079.npz"
 
-def load_model(model_path):
+def load_model(model_path, checkpoint=0):
     with np.load(model_path, allow_pickle=True) as data:
         args = data['args'].item()
-        weights_dict = data['weights'].item()
+        print(f"Loading checkpoint {checkpoint} of {len(data.keys()) - 2}")
+        weights_dict = data[f'weights_checkpoint_{checkpoint}'].item()
         weights = [0 for _ in weights_dict.keys()]
         for i, w in weights_dict.items():
             weights[i] = jnp.array(w)
