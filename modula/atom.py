@@ -80,7 +80,7 @@ def _pure_svd(M):
 def soft_cap_coupling(w_max, wd, max_update_norm):
     """Calculates the strength for soft cap that bounds singular values at w_max."""
     k = w_max * (1 - wd) + max_update_norm
-    coeffs = jnp.array([-9 * k**9, 3 * k**7, -3 * k**5, 0, k - w_max])
+    coeffs = jnp.array([-k**9, 3 * k**7, -3 * k**5, 0, k - w_max])
     roots = jnp.roots(coeffs, strip_zeros=False)
     is_real = jnp.abs(roots.imag) < 1e-6
     is_nonnegative = roots.real >= 0
