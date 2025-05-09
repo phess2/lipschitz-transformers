@@ -129,7 +129,7 @@ def _download_and_extract_cifar10():
     # Create data directory
     data_dir = os.path.join(os.path.dirname(__file__), "cifar10_files")
     if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
+        os.makedirs(data_dir, exist_ok=True)
 
     # Download files if needed
     url = "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"

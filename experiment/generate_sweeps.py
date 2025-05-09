@@ -18,9 +18,9 @@ optimizer_pre_post_lr = [
 #     ("muon", False, True,  np.logspace(-3, -2, 4)), 
 # ]
 
-d_embeds = [512] #[12*16]
+d_embeds = [256] #[12*16] #! can make this a list
 project = [
-    {"default": "none"},
+    # {"default": "none"},
     #{"default": "orthogonal"},
     #{"default": "hard_cap"},
     {"default": "soft_cap"},
@@ -32,25 +32,19 @@ project = [
 ]  # key: default or tracker string; value: none, orthogonal, hard_cap, soft_cap1, soft_cap2, soft_cap3, pure_svd
 model_dtypes = ["float32"]   # options: float8_e4m3fn, bfloat16, float32, float64
 project_dtypes = ["float32"]  # options: float8_e4m3fn, bfloat16, float32, float64
-dual_norms = [False]  # Default is False. If True, use full dual norm from steepest descent
-w_max = [10]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
+w_max = [1]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
 
 residual_scales = [1]  # (1 - a/depth) * x + (a/depth) * block(x)
 softmax_scales = [1] # these get squared
-final_scales = [1]#, 4, 16, 64, 256]#32, 64, 128, 256, 512] #[0.25, 1, 4, 16, 64, 96, 112, 128, 144, 160, 256, 512] # these are linear
+final_scales = [1]#32, 64, 128, 256, 512] #[0.25, 1, 4, 16, 64, 96, 112, 128, 144, 160, 256, 512] # these are linear
 scales_learnable = [False]
 
-wd_base = [0.1]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
-wd_and_wdlr_power = [  # wdlr_power is DISABLED -- due to linear coupling for soft cap
-    #(wd_base, 0),
-    (wd_base, 1),
-    #(wd_base, 2),
-] # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
+wd_base = [0]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
 
 seeds = [0]
 data = "cifar"      # fineweb, shakespeare, cifar
 output_dir = "results"
-randomize_labels = 0   # label noise fraction (0 = no noise, 1 = randomize all)
+randomize_labels = [0, 1]   # label noise fraction (0 = no noise, 1 = randomize all)
 
 batch_size = 16 if data == "fineweb" else (64 if data == "shakespeare" else 512)
 accum_steps = 8 if data == "fineweb" else 1
@@ -61,7 +55,7 @@ epoch_steps = 50000 // batch_size
 steps = int(epochs * epoch_steps) if data == "cifar" else 10001
 beta1 = 0.9
 beta2 = 0.95
-schedules = ["linear"]      # linear, cosine, or none
+schedules = ["none"]      # linear, cosine, or none
 
 num_blocks = 12 if data == "fineweb" else (3 if data == "shakespeare" else 3)
 seq_len = 1024 if data == "fineweb" else 256
@@ -70,7 +64,7 @@ zero_init = True
 
 log_interval = 10 if data == "fineweb" else (10 if data == "shakespeare" else epoch_steps // 4)
 val_interval = 100 if data == "fineweb" else (100 if data == "shakespeare" else epoch_steps // 2)
-val_iters = 200 if data == "fineweb" else 50
+val_iters = 200 if data == "fineweb" else 20
 
 # Create all combinations
 combinations = []
@@ -92,41 +86,42 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                         for nheads in num_heads:
                                                             for schedule in schedules:
                                                                 for seed in seeds:
-                                                                    combinations.append({
-                                                                        'd_embed': d_embed,
-                                                                        'lr': lr,
-                                                                        'wd': wd,
-                                                                        'wd_lr_power': wd_lr_power,
-                                                                        'num_blocks': num_blocks,
-                                                                        'seq_len': seq_len,
-                                                                        'num_heads': nheads,
-                                                                        'softmax_scale': softmax_scale,
-                                                                        'final_scale': final_scale,
-                                                                        'residual_scale': residual_scale,
-                                                                        'scales_learnable': scale_learnable,
-                                                                        'optimizer': optimizer,
-                                                                        'dual_norm': dual_norm,
-                                                                        'pre_dualize': pre,
-                                                                        'post_dualize': post,
-                                                                        'beta1': beta1,
-                                                                        'beta2': beta2,
-                                                                        'batch_size': batch_size,
-                                                                        'accum_steps': accum_steps,
-                                                                        'zero_init': zero_init,
-                                                                        'project': proj,
-                                                                        'w_max': wmax,
-                                                                        'model_dtype': model_dtype,
-                                                                        'project_dtype': project_dtype,
-                                                                        'steps': steps,
-                                                                        'schedule': schedule,
-                                                                        'data': data,
-                                                                        'randomize_labels': randomize_labels,
-                                                                        'seed': seed,
-                                                                        'log_interval': log_interval,
-                                                                        'val_interval': val_interval,
-                                                                        'val_iters': val_iters,
-                                                                        'output_dir': output_dir,
-                                                                    })
+                                                                    for randomize in randomize_labels:
+                                                                        combinations.append({
+                                                                            'd_embed': d_embed,
+                                                                            'lr': lr,
+                                                                            'wd': wd,
+                                                                            'wd_lr_power': wd_lr_power,
+                                                                            'num_blocks': num_blocks,
+                                                                            'seq_len': seq_len,
+                                                                            'num_heads': nheads,
+                                                                            'softmax_scale': softmax_scale,
+                                                                            'final_scale': final_scale,
+                                                                            'residual_scale': residual_scale,
+                                                                            'scales_learnable': scale_learnable,
+                                                                            'optimizer': optimizer,
+                                                                            'dual_norm': dual_norm,
+                                                                            'pre_dualize': pre,
+                                                                            'post_dualize': post,
+                                                                            'beta1': beta1,
+                                                                            'beta2': beta2,
+                                                                            'batch_size': batch_size,
+                                                                            'accum_steps': accum_steps,
+                                                                            'zero_init': zero_init,
+                                                                            'project': proj,
+                                                                            'w_max': wmax,
+                                                                            'model_dtype': model_dtype,
+                                                                            'project_dtype': project_dtype,
+                                                                            'steps': steps,
+                                                                            'schedule': schedule,
+                                                                            'data': data,
+                                                                            'randomize_labels': randomize,
+                                                                            'seed': seed,
+                                                                            'log_interval': log_interval,
+                                                                            'val_interval': val_interval,
+                                                                            'val_iters': val_iters,
+                                                                            'output_dir': output_dir,
+                                                                        })
 
 # Save combinations to file
 root_path = os.getenv('ROOT_PATH')
