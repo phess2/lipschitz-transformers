@@ -12,21 +12,26 @@ def batch_project(M, project_fn):
     return M_projected.reshape(M.shape) / len(M_flattened)
 
 def _orthogonalize(M):
-    """Orthogonalize a single matrix, always bfloat16."""
-    a, b, c = 3.0, -3.2, 1.2
+    """Orthogonalize a single matrix, always bfloat16. Credit for coefficients to @YouJiacheng and @leloykun."""
+    abc_list = [
+        (3955/1024, -8306/1024, 5008/1024),
+        (3735/1024, -6681/1024, 3463/1024),
+        (3799/1024, -6499/1024, 3211/1024),
+        (4019/1024, -6385/1024, 2906/1024),
+        (2677/1024, -3029/1024, 1162/1024),
+        (2172/1024, -1833/1024,  682/1024)
+    ]
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
-    original_dtype = M.dtype
-    M = M.astype(jnp.bfloat16)
     M = M / (jnp.linalg.norm(M) + 1e-12)
-    for _ in range(10):
+    for a, b, c in abc_list:
         A = M.T @ M
         I = jnp.eye(A.shape[0], dtype=M.dtype)
         M = M @ (a * I + b * A + c * A @ A)
     if transpose:
         M = M.T
-    return M.astype(original_dtype)
+    return M
 
 def _hard_cap(M):
     """Apply min(1, x) approximately to the singular values of a single matrix. Credit: Franz Cecista."""
@@ -64,11 +69,93 @@ def _soft_cap(M, alpha):
         M = M.T
     return M
 
-def _pure_svd(M):
-    """Apply min(1, x) exactly to the singular values of a single matrix."""
+def _pure_svd(M, w_max=1):
+    """Apply min(w_max, x) exactly to the singular values of a single matrix."""
     U, S, Vh = jnp.linalg.svd(M, full_matrices=False)
-    S = jnp.clip(S, a_max=1)
+    S = jnp.clip(S, a_max=w_max)
     return U @ jnp.diag(S) @ Vh
+
+def _power_iterate(M, key, steps=16, eps=1e-12):
+    """Power iterate to find the principal singular value and vectors of M."""
+    transpose = M.shape[0] > M.shape[1]
+    if transpose:
+        M = M.T
+    A = M.T @ M
+
+    # we use fold_in get different random numbers for different matrices
+    # while avoiding the hassle of returning the subkey from splitting
+    subkey = jax.random.fold_in(key, jnp.sum(M))
+    v = jax.random.normal(subkey, shape=(M.shape[0],))
+    for _ in range(steps):
+        v /= jnp.linalg.norm(v)
+        v = A @ v
+    
+    norm_v = jnp.linalg.norm(v)
+    sigma_max = norm_v ** 0.5
+    v /= norm_v
+    
+    if transpose:
+        v = v.T
+    return M @ v / sigma_max, sigma_max, v  # u, sigma_max, v  --  the principal singular vector subspace
+
+def power_iter(M, key, steps=16, eps=1e-12):
+    transpose = M.shape[0] > M.shape[1]
+    if transpose:
+        M = M.T
+    A = M.T @ M
+
+    # we use fold_in get different random numbers for different matrices
+    # while avoiding the hassle of returning the subkey from splitting
+    subkey = jax.random.fold_in(key, jnp.sum(M))
+    v0 = jax.random.normal(subkey, shape=(M.shape[0],))
+    v0 /= jnp.linalg.norm(v0)
+
+    def cond_fun(state):
+        v, old_v, i = state
+        delta = jnp.max(jnp.abs(v - old_v))
+        return jnp.logical_and(delta > eps, i < steps)
+
+    def body_fun(state):
+        v, _, i = state
+        v_new = A @ v
+        v_new /= jnp.linalg.norm(v_new)
+        return (v_new, v, i + 1)
+
+    v, _, _ = jax.lax.while_loop(cond_fun, body_fun, (v0, v0, 0))
+    v_new = A @ v
+    sigma_max = jnp.linalg.norm(v_new) ** 0.5
+    if transpose:
+        v = v.T
+    return M @ v / sigma_max, sigma_max, v
+
+def _spectral_hammer(M, key, w_max=1):
+    """Set the largest singular value of M to w_max."""
+    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
+    outer = (u @ v).reshape(M.shape)   # calculate the principal vector subspace
+    change = w_max - sigma_max  # how much to hammer in the highest singular value
+    return M + change * outer
+
+def _spectral_weight_decay(M, key, wd=0.1):
+    """Decay the largest singular value of M by 1 - wd."""
+    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
+    outer = (u @ v).reshape(M.shape)   # calculate the principal vector subspace
+    change = wd * sigma_max  # how much to decay the highest singular value
+    return M - change * outer
+
+def _spectral_normalize(M, key):
+    """Normalize the singular values of M to 1."""
+    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
+    return M / jnp.maximum(1, sigma_max)  # clip at 1 but allow decaying to zero
+
+def soft_cap_coupling(w_max, wd, max_update_norm):
+    """Calculates the strength for soft cap that bounds singular values at w_max."""
+    k = w_max * (1 - wd) + max_update_norm
+    coeffs = jnp.array([-k**9, 3 * k**7, -3 * k**5, 0, k - w_max])
+    roots = jnp.roots(coeffs, strip_zeros=False)
+    is_real = jnp.abs(roots.imag) < 1e-6
+    is_nonnegative = roots.real >= 0
+    padded_reals = jnp.where(is_real & is_nonnegative, roots.real, jnp.ones_like(roots.real))
+    return jnp.min(padded_reals)
 
 # Define batch versions of the project functions (as functions so they can be imported)
 def orthogonalize(M, **kwargs):
@@ -77,25 +164,26 @@ def hard_cap(M, **kwargs):
     return batch_project(M, _hard_cap)
 def soft_cap(M, alpha):
     return batch_project(M, lambda x: _soft_cap(x, alpha=alpha))
-def soft_cap1(M, **kwargs):
-    return batch_project(M, lambda x: _soft_cap(x, alpha=0.002))
-def soft_cap2(M, **kwargs):
-    return batch_project(M, lambda x: _soft_cap(x, alpha=0.05))
-def soft_cap3(M, **kwargs):
-    return batch_project(M, lambda x: _soft_cap(x, alpha=0.1))
-def pure_svd(M, **kwargs):
-    return batch_project(M, _pure_svd)
+def pure_svd(M, w_max=1, **kwargs):
+    return batch_project(M, lambda x: _pure_svd(x, w_max))
+def spectral_hammer(M, key, w_max=1):
+    return batch_project(M, lambda x: _spectral_hammer(x, key, w_max))
+def spectral_weight_decay(M, key, wd=0.1):
+    return batch_project(M, lambda x: _spectral_weight_decay(x, key, wd))
+def spectral_normalize(M, key):
+    return batch_project(M, lambda x: _spectral_normalize(x, key))
 
+# Embed
+def _embed_project(M, axis, max_inflation_factor):
+    """RMS normalize the rows of M, then clip at max_inflation_factor. M is [d_embed, num_embed]."""
+    rmsnorm_of_rows = jnp.linalg.norm(M, axis=axis, keepdims=True) / jnp.sqrt(M.shape[axis])
+    M = M / jnp.maximum(1 / max_inflation_factor, rmsnorm_of_rows)
+    return M
 
-def soft_cap_coupling(w_max, wd, max_update_norm):
-    """Calculates the strength for soft cap that bounds singular values at w_max."""
-    k = w_max * (1 - wd) + max_update_norm
-    coeffs = jnp.array([-9 * k**9, 3 * k**7, -3 * k**5, 0, k - w_max])
-    roots = jnp.roots(coeffs, strip_zeros=False)
-    is_real = jnp.abs(roots.imag) < 1e-6
-    is_positive = roots.real > 0
-    padded_reals = jnp.where(is_real & is_positive, roots.real, jnp.ones_like(roots.real))
-    return jnp.min(padded_reals)
+def embed_project(M, max_inflation_factor, **kwargs):
+    return batch_project(M, lambda x: _embed_project(x, -2, max_inflation_factor))
+def unembed_project(M, max_inflation_factor, **kwargs):
+    return batch_project(M, lambda x: _embed_project(x, -1, max_inflation_factor))
 
 class Linear(Atom):
     def __init__(self, fanout, fanin, dtype=jnp.float32, project_dtype=None, zero_init=False, project=None, tracker=None):
@@ -109,12 +197,13 @@ class Linear(Atom):
         self.mass = 1
         self.sensitivity = 1
 
-        self._project = lambda x: x
-        if tracker in project:  # project is a dictionary mapping tracker names to projection functions
-            self._project = project[tracker]
-        elif "default" in project:
-            self._project = project["default"]
-        
+        self._project = lambda x, **kwargs: x
+        if project is not None:
+            if tracker in project:  # project is a dictionary mapping tracker names to projection functions
+                self._project = project[tracker]
+            elif "default" in project:
+                self._project = project["default"]
+
     def forward(self, x, w):
         # x shape is [..., fanin]
         weights = w[0]  # shape is [fanout, fanin]
@@ -132,17 +221,19 @@ class Linear(Atom):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin), dtype=self.dtype)
         return self.orthogonalize([weight])
     
-    def project(self, w, w_max=1.0, wd=0.0, max_update_norm=1.0):
+    def project(self, w, w_max=1.0, wd=0.0, max_update_norm=1.0, key=None):
         weight = w[0]
         casted = weight.astype(self.project_dtype)
         scale = jnp.sqrt(self.fanout / self.fanin)
-        alpha = soft_cap_coupling(w_max, wd, max_update_norm)  # only some proj functions use this
-        projected = scale * self._project(casted / scale, alpha=alpha)
+        # max_update_norm is correct in the RMS->RMS induced norm,
+        # but we divide by scale to account for the effect it will have on casted / scale
+        alpha = soft_cap_coupling(w_max, wd, max_update_norm / scale)  # only some proj functions use this
+        projected = scale * self._project(casted / scale, alpha=alpha, key=key)
         return [projected.astype(self.dtype)]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = self.orthogonalize(grad_w)[0] * target_norm
-        return [d_weight]
+        d_weight = self.orthogonalize(grad_w)[0]
+        return [d_weight * target_norm]
     
     def log(self, w, grad_w):
         if self.tracker is None:
@@ -150,7 +241,12 @@ class Linear(Atom):
         
         if "weight_norm" not in self.log_info:
             self.log_info["weight_norm"] = []
-        self.log_info["weight_norm"].append(jnp.linalg.norm(w[0].astype(jnp.float32), ord=2))
+        fan_out, fan_in = w[0].shape
+        self.log_info["weight_norm"].append((fan_in/fan_out)**0.5 * jnp.linalg.norm(w[0].astype(jnp.float32), ord=2))
+
+        if "raw_grad_norm" not in self.log_info:
+            self.log_info["raw_grad_norm"] = []
+        self.log_info["raw_grad_norm"].append(jnp.linalg.norm(grad_w[0].astype(jnp.float32), ord=2))
 
         
         if "cos_angle_w_with_d_w" not in self.log_info:
@@ -161,41 +257,12 @@ class Linear(Atom):
         return {self.tracker: self.log_info}
 
 
-def sr_sinkhorn(g, steps=5):
-    """
-    Implementation of the Square-Root Sinkhorn algorithm,
-    Algorithm 3 in https://arxiv.org/abs/2502.06742v1
-    """
-    X = g
-    m, n = X.shape
-
-    for _ in range(steps):
-        # Row-wise normalization
-        row_norms = jnp.linalg.norm(X, axis=1, keepdims=True)  # [m, 1]
-        row_norms = jnp.clip(row_norms, a_min=1e-8)
-        X = n**0.5 * X / row_norms
-
-        # Column-wise normalization
-        col_norms = jnp.linalg.norm(X, axis=0, keepdims=True)  # [1, n]
-        col_norms = jnp.clip(col_norms, a_min=1e-8)
-        X = m**0.5 * X / col_norms
-
-    return X
-
-class SinkhornLinear(Linear):
-    def __init__(self, fanout, fanin, dtype=jnp.float32, tracker=None):
-        super().__init__(fanout, fanin, dtype, tracker)
-        self.smooth = False
-
-    def dualize(self, grad_w, w=None, target_norm=1.0):
-        weight = sr_sinkhorn(grad_w[0]) * target_norm
-        return [weight]
-
 class Embed(Atom):
-    def __init__(self, d_embed, num_embed, dtype=jnp.float32, tracker=None):
+    def __init__(self, d_embed, num_embed, dtype=jnp.float32, max_inflation_factor=1, tracker=None):
         super().__init__(tracker)
         self.num_embed = num_embed
         self.d_embed = d_embed
+        self.max_inflation_factor = max_inflation_factor
         self.smooth = True
         self.mass = 1
         self.sensitivity = 1
@@ -207,91 +274,73 @@ class Embed(Atom):
 
     def initialize(self, key):
         weight = jax.random.normal(key, shape=(self.d_embed, self.num_embed), dtype=self.dtype)
-        return self.project([weight])
-
-    def project(self, w):
+        weight = embed_project(weight, max_inflation_factor=1e9)  # always send to norm 1
+        return [weight]
+    
+    def project(self, w, **kwargs):
         weight = w[0]
-        weight = weight / jnp.linalg.norm(weight, axis=0, keepdims=True) * jnp.sqrt(self.d_embed)
+        weight = embed_project(weight, max_inflation_factor=1)  # allow decaying to zero
         return [weight]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = self.project(grad_w)[0] * target_norm
-        d_weight = jnp.nan_to_num(d_weight)
-        return [d_weight]
-    
-    def log(self, w, grad_w):
-        return {}
-
-class Scalar(Atom):
-    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
-        super().__init__(tracker)
-        self.smooth = True
-        self.mass = 1
-        self.sensitivity = 1
-        self.scale = scale
-        self.dtype = dtype
-
-    def forward(self, x, w):
-        return x * w[0]
-    
-    def initialize(self, key):
-        return [jnp.ones(1, dtype=self.dtype) * self.scale]
-    
-    def project(self, w):
-        return [jnp.sign(w[0]) * self.scale]  # multiplying by self.scale might break sensitivity guarantees
-    
-    def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = self.project(grad_w)[0] * target_norm
-        return [d_weight]
+        d_weight = grad_w[0]
+        d_weight = embed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
+        return [d_weight * target_norm]
     
     def log(self, w, grad_w):
         if self.tracker is None:
             return {}
         
-        if "scalar" not in self.log_info:
-            self.log_info["scalar"] = []
-
-        self.log_info["scalar"].append(w[0])
+        if "weight_norm" not in self.log_info:
+            self.log_info["weight_norm"] = []
+        self.log_info["weight_norm"].append(jnp.max(jnp.linalg.norm(w[0], axis=0, keepdims=True)) / jnp.sqrt(self.d_embed))
+            
         return {self.tracker: self.log_info}
 
-class SquareScalar(Scalar):
-    def __init__(self, scale=0, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
+
+class Unembed(Atom):
+    def __init__(self, d_embed, num_embed, dtype=jnp.float32, max_inflation_factor=1, zero_init=False, tracker=None):
+        super().__init__(tracker)
+        self.num_embed = num_embed
+        self.d_embed = d_embed
+        self.max_inflation_factor = max_inflation_factor
+        self.zero_init = zero_init
+        self.smooth = True
+        self.mass = 1
+        self.sensitivity = 1
+        self.dtype = dtype
 
     def forward(self, x, w):
-        return x * w[0]**2
+        weights = w[0]  # shape [d_embed, num_embed]
+        return x @ weights.transpose()  # shape [..., num_embed]
 
-class ExpScalar(Scalar):
-    def __init__(self, scale=0, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
+    def initialize(self, key):
+        if self.zero_init:
+            return [jnp.zeros((self.num_embed, self.d_embed), dtype=self.dtype)]
+        weight = jax.random.normal(key, shape=(self.num_embed, self.d_embed), dtype=self.dtype)
+        weight = unembed_project(weight, max_inflation_factor=1e9)
+        return [weight]
 
-    def forward(self, x, w):
-        return x * jnp.exp(w[0])
+    def project(self, w, **kwargs):
+        weight = w[0]
+        weight = unembed_project(weight, max_inflation_factor=1)  # allow decaying to zero
+        return [weight]
 
-class LearnableScalar(Scalar):
-    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
-    
-    def project(self, w):
-        return [w[0]]
-    
     def dualize(self, grad_w, w=None, target_norm=1.0):
-        d_weight = super().project(grad_w)[0] * target_norm
-        return [d_weight]
-
-class LearnableSquareScalar(LearnableScalar):
-    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
+        d_weight = grad_w[0]
+        d_weight = unembed_project(d_weight, max_inflation_factor=self.max_inflation_factor)
+        return [d_weight * target_norm]
     
-    def forward(self, x, w):
-        return x * w[0]**2
+    def log(self, w, grad_w):
+        if self.tracker is None:
+            return {}
+        
+        if "weight_norm" not in self.log_info:
+            self.log_info["weight_norm"] = []
+        self.log_info["weight_norm"].append(jnp.max(jnp.linalg.norm(w[0], axis=1, keepdims=True)) / jnp.sqrt(self.d_embed))
+        
+        return {self.tracker: self.log_info}
 
-class LearnableExpScalar(LearnableScalar):
-    def __init__(self, scale=1, dtype=jnp.float32, tracker=None):
-        super().__init__(scale=scale, dtype=dtype, tracker=tracker)
-    
-    def forward(self, x, w):
-        return x * jnp.exp(w[0])
 
     
 if __name__ == "__main__":

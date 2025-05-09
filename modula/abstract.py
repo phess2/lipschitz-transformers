@@ -46,7 +46,7 @@ class Module:
         # Return a weight list.
         raise NotImplementedError
 
-    def project(self, w):
+    def project(self, w, key=None):
         # Return a weight list.
         raise NotImplementedError
 
@@ -58,7 +58,7 @@ class Module:
         # Weight list, update list, learning rate, raw gradient --> updated weight list
         raise NotImplementedError
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
         # Weight list, update list, weight norm max, weight decay, learning rate, target norm --> updated weight list
         raise NotImplementedError
     
@@ -74,9 +74,9 @@ class Module:
     def __add__(self, other):
         return Add() @ TupleModule((self, other))
 
-    def __mul__(self, other):
-        assert other != 0, "cannot multiply a module by zero"
-        return self @ Mul(other)
+    def __mul__(self, scalar):
+        assert scalar != 0, "cannot multiply a module by zero"
+        return self @ Mul(scalar)
 
     def __rmul__(self, scalar):
         return Mul(scalar) @ self
@@ -89,23 +89,6 @@ class Module:
         return self.forward(x, w)
 
 
-def _orthogonalize(M):
-    """Orthogonalize a single matrix, always bfloat16."""
-    a, b, c = 3.0, -3.2, 1.2
-    transpose = M.shape[1] > M.shape[0]
-    if transpose:
-        M = M.T
-    original_dtype = M.dtype
-    M = M.astype(jax.numpy.bfloat16)
-    M = M / (jax.numpy.linalg.norm(M) + 1e-12)
-    for _ in range(10):
-        A = M.T @ M
-        I = jax.numpy.eye(A.shape[0], dtype=M.dtype)
-        M = M @ (a * I + b * A + c * A @ A)
-    if transpose:
-        M = M.T
-    return M.astype(original_dtype)
-
 class Atom(Module):
     def __init__(self, tracker=None):
         super().__init__(tracker)
@@ -117,16 +100,18 @@ class Atom(Module):
         dual_norm = 1 if g is None else jax.numpy.linalg.norm(g[0], "nuc") # jax.numpy.sum(d_w[0] * g[0])  # target norm messes this up
         return [w[0] - lr * dual_norm * d_w[0]]
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
         # the weight update d_w already has norm target_norm
         max_update_norm = lr * target_norm
         w_decayed = w[0] * (1 - wd * max_update_norm)
         w_stepped = w_decayed - lr * d_w[0]
+<<<<<<< HEAD
         w_projected = self.project([w_stepped], w_max=w_max, wd=wd * max_update_norm, max_update_norm=max_update_norm)
+=======
+        w_projected = self.project([w_stepped], w_max=w_max, wd=wd * max_update_norm, max_update_norm=max_update_norm, key=key)
+>>>>>>> origin/laker-coupling
         return w_projected
         
-    
-
 class Bond(Module):
     def __init__(self):
         super().__init__()
@@ -137,7 +122,7 @@ class Bond(Module):
     def initialize(self, key):
         return []
 
-    def project(self, w):
+    def project(self, w, key=None):
         return []
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
@@ -146,7 +131,7 @@ class Bond(Module):
     def step(self, w, d_w, lr, g=None):
         return []
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
         return []
     
     def log(self, w, grad_w):
@@ -176,11 +161,11 @@ class CompositeModule(Module):
         key, subkey = jax.random.split(key)
         return m0.initialize(key) + m1.initialize(subkey)
 
-    def project(self, w):
+    def project(self, w, key=None):
         m0, m1 = self.children
         w0 = w[:m0.atoms]
         w1 = w[m0.atoms:]
-        return m0.project(w0) + m1.project(w1)
+        return m0.project(w0, key=key) + m1.project(w1, key=key)
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
         if self.mass > 0:
@@ -206,7 +191,7 @@ class CompositeModule(Module):
         step1 = m1.step(w1, d_w1, lr, g1)
         return step0 + step1
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
         if self.mass == 0:
             return w
         m0, m1 = self.children
@@ -214,8 +199,8 @@ class CompositeModule(Module):
         w1 = w[m0.atoms:] if w is not None else None
         d_w0 = d_w[:m0.atoms] if d_w is not None else None
         d_w1 = d_w[m0.atoms:] if d_w is not None else None
-        w0 = m0.decay_step_project(w0, d_w0, w_max, wd, lr, target_norm = target_norm * m0.mass / self.mass / m1.sensitivity)
-        w1 = m1.decay_step_project(w1, d_w1, w_max, wd, lr, target_norm = target_norm * m1.mass / self.mass)
+        w0 = m0.decay_step_project(w0, d_w0, w_max, wd, lr, target_norm = target_norm * m0.mass / self.mass / m1.sensitivity, key=key)
+        w1 = m1.decay_step_project(w1, d_w1, w_max, wd, lr, target_norm = target_norm * m1.mass / self.mass, key=key)
         return w0 + w1
 
     def log(self, w, grad_w):
@@ -251,10 +236,10 @@ class TupleModule(Module):
             w += m.initialize(subkey)
         return w
 
-    def project(self, w):
+    def project(self, w, key=None):
         projected_w = []
         for m in self.children:
-            projected_w_m = m.project(w[:m.atoms])
+            projected_w_m = m.project(w[:m.atoms], key=key)
             projected_w += projected_w_m
             w = w[m.atoms:]
         return projected_w
@@ -289,14 +274,14 @@ class TupleModule(Module):
             g = g[m.atoms:] if g is not None else None
         return steps
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
         if self.mass == 0:
             return w
         steps = []
         for m in self.children:
             w_m = w[:m.atoms]
             d_w_m = d_w[:m.atoms]
-            w_m = m.decay_step_project(w_m, d_w_m, w_max, wd, lr, target_norm = target_norm * m.mass / self.mass)
+            w_m = m.decay_step_project(w_m, d_w_m, w_max, wd, lr, target_norm = target_norm * m.mass / self.mass, key=key)
             steps += w_m
             w = w[m.atoms:]
             d_w = d_w[m.atoms:]
@@ -333,7 +318,7 @@ class Mul(Bond):
     def __init__(self, scalar):
         super().__init__()
         self.smooth = True
-        self.sensitivity = scalar
+        self.sensitivity = 1
 
     def forward(self, x, w):
         return x * self.sensitivity

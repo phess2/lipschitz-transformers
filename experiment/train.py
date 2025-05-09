@@ -17,8 +17,6 @@ from modula.compound import GPT, MLP
 from modula.bond import Flatten
 from modula.atom import *
 
-np.random.seed(0)
-
 from data.shakespeare import load_shakespeare
 from data.cifar10 import load_cifar10
 from data.fineweb import load_fineweb
@@ -28,7 +26,8 @@ def print_log(message, job_idx, priority=0, indent=0):
     if priority > max_log_priority: return
 
     current_time = time.strftime("%H:%M:%S")
-    gpu_memory = jax.device_get(jax.devices()[0].memory_stats()['peak_bytes_in_use']) / 1024**3 if jax.devices() else -1
+    memory_stats = jax.device_get(jax.devices()[0].memory_stats())
+    gpu_memory = memory_stats['peak_bytes_in_use'] / 1024**3 if memory_stats else -1
     process = psutil.Process()
     ram_usage = process.memory_info().rss / 1024**3
     print(f"[{current_time} gpu {gpu_memory:.1f}G ram {ram_usage:.1f}G idx {job_idx}] {' '*4*indent}{message}")
@@ -45,14 +44,14 @@ def load_data(args):
     return data["train_loader"], data["test_loader"], data["loss"]
 
 project_str_to_fn = {
-    "none": lambda x: x,
+    "none": lambda x, **kwargs: x,
     "orthogonal": orthogonalize,
     "hard_cap": hard_cap,
     "soft_cap": soft_cap,
-    "soft_cap1": soft_cap1,
-    "soft_cap2": soft_cap2,
-    "soft_cap3": soft_cap3,
     "pure_svd": pure_svd,
+    "spec_hammer": spectral_hammer,
+    "spec_wd": spectral_weight_decay,
+    "spec_normalize": spectral_normalize,
 }
 
 dtype_str_to_dtype = {
@@ -71,13 +70,11 @@ def create_model(args):
     kwargs["project_dtype"] = dtype_str_to_dtype[args.project_dtype]
 
     if args.data == "fineweb" or args.data == "shakespeare":
-        kwargs["vocab_size"] = 50304 if args.data == "fineweb" else 65
         return GPT(**kwargs)
     elif args.data == "cifar":
         kwargs["output_dim"] = 10
         kwargs["input_dim"] = 32*32*3
-        model = MLP(**kwargs)
-        return args.final_scale * model @ Flatten()
+        return MLP(**kwargs)
     else:
         raise ValueError(f"Unknown dataset: {args.data}")
 
@@ -90,6 +87,7 @@ def train(args):
     # loss takes (model, w, inputs, targets), so we wrap model in first
     loss_and_grad = jax.jit(jax.value_and_grad(partial(loss, model)))
 
+    np.random.seed(args.seed)
     key = jax.random.PRNGKey(args.seed)
     key, subkey = jax.random.split(key)
     w = model.initialize(subkey)
@@ -117,6 +115,10 @@ def train(args):
     running_loss = 0.0
     start_time = time.time()
 
+    profile = False
+    if profile:
+        os.makedirs("profile", exist_ok=True)
+        jax.profiler.start_trace("profile")
     for inputs, targets in train_loader:
         loss, grad_w = loss_and_grad(w, inputs, targets)
         accum_grad = jax.tree.map(jnp.add, accum_grad, grad_w)
@@ -142,11 +144,8 @@ def train(args):
         d_w = model.dualize(d_w) if args.post_dualize else d_w
 
         # Couples weight decay, optimizer step, and projection into one so they can share target_norm calculations
-        #wd_step_size = args.lr * schedule(step) ** args.wd_lr_power
-        w = model.decay_step_project(w, d_w, w_max=args.w_max, wd=args.wd, lr=args.lr * schedule(step))
-        #w = jax.tree.map(lambda weight: (1 - args.wd * wd_step_size) * weight, w)
-        #w = model.step(w, d_w, args.lr * schedule(step), g=grad_w if args.dual_norm else None)
-        #w = model.project(w, w_max=args.w_max, wd=args.wd * wd_step_size, target_norm=args.lr * schedule(step))
+        subkey, key = jax.random.split(key)
+        w = model.decay_step_project(w, d_w, w_max=args.w_max, wd=args.wd, lr=args.lr * schedule(step), key=subkey)
 
         running_loss += loss
         if step % args.log_interval == 0:
@@ -189,14 +188,53 @@ def train(args):
         if step >= args.steps:
             break
     
+    if profile:
+        jax.profiler.stop_trace()
+
     log["losses"] = losses
     log["val_losses"] = val_losses
     log["accuracies"] = accuracies
     log["train_accuracies"] = train_accuracies
     log["total_time"] = time.time() - start_time
-    return log
+    return log, w
 
-def save_results(results, args):
+
+def calculate_lipschitz_constant(output: dict) -> float:
+    """Calculate Lipschitz constant using actual weight norms from a trained model."""
+    if output['parameters']['data'] == "cifar":
+        mlp_in_norm = output['results']['mlp_in']['weight_norm'][-1]
+        mlp_0_norm = output['results']['mlp_0']['weight_norm'][-1]
+        mlp_out_norm = output['results']['mlp_out']['weight_norm'][-1]
+        return mlp_in_norm * mlp_0_norm * mlp_out_norm
+
+    # assume the model is a GPT
+    L_embed = output['results']['embed']['weight_norm'][-1]
+    L_unembed = output['results']['out']['weight_norm'][-1]
+    
+    num_layers = output['parameters']['num_blocks']
+    alpha = 1 / (2*num_layers)
+    
+    L = L_embed
+    for layer in range(num_layers):
+        q_norm = output['results'][f'q{layer}']['weight_norm'][-1]
+        k_norm = output['results'][f'k{layer}']['weight_norm'][-1]
+        v_norm = output['results'][f'v{layer}']['weight_norm'][-1]
+        w_norm = output['results'][f'w{layer}']['weight_norm'][-1]
+        
+        L_att = q_norm * k_norm * v_norm * w_norm
+        
+        mlp_in_norm = output['results'][f'mlp_in{layer}']['weight_norm'][-1]
+        mlp_out_norm = output['results'][f'mlp_out{layer}']['weight_norm'][-1]
+        
+        L_mlp = mlp_in_norm * mlp_out_norm
+        
+        L = (1 - alpha) * L + alpha * L_att
+        L = (1 - alpha) * L + alpha * L_mlp
+    
+    L = L * L_unembed
+    return L
+
+def save_results(results, args, weights):
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     timestamp_to_millisecond = time.strftime("%Y%m%d_%H%M%S") + f"{int(time.time() * 1000) % 1000:03d}"
@@ -215,6 +253,8 @@ def save_results(results, args):
         'results': results,
         'code': code
     }
+    lipschitz_constant = calculate_lipschitz_constant(output)
+    output['results']['lipschitz_constant'] = lipschitz_constant
 
     def jax_to_numpy(d):
         if isinstance(d, dict):
@@ -226,12 +266,23 @@ def save_results(results, args):
         else:
             return d
 
-    output = jax_to_numpy(output)
-    output_path = Path(args.output_dir) / filename
-    with open(output_path, 'w') as f:
-        json.dump(output, f, indent=2)
-    
-    print_log(f"Results saved to {output_path}", args.job_idx)
+    # save results
+    if not args.save_weights:
+        output = jax_to_numpy(output)
+        output_path = Path(args.output_dir) / filename
+        with open(output_path, 'w') as f:
+            json.dump(output, f, indent=2)
+    else:
+        # save model args as json and weights as npz
+        model_dict = {
+            "args": args,
+            "results": results,
+            "weights": {i: w for i, w in enumerate(weights)}
+        }
+        model_dict = jax_to_numpy(model_dict)
+        model_path = Path(args.output_dir) / f"{args.data}_{args.optimizer}_val_loss_{results['val_losses'][-1]:.3f}_lipschitz_{lipschitz_constant:.3f}.npz"
+        np.savez_compressed(model_path, **model_dict, allow_pickle=True)
+        print_log(f"Model saved to {model_path}", args.job_idx)
 
 class DotDict(dict):
     def __getattr__(self, key):
@@ -265,8 +316,8 @@ def main():
     for key, value in args.items():
         print_log(f"{key}: {value}", args.job_idx)
 
-    results = train(args)    
-    save_results(results, args)
+    results, weights = train(args)    
+    save_results(results, args, weights)
 
 if __name__ == "__main__":
     main()
