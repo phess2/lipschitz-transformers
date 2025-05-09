@@ -24,8 +24,6 @@ def _orthogonalize(M):
     transpose = M.shape[1] > M.shape[0]
     if transpose:
         M = M.T
-    original_dtype = M.dtype
-    M = M.astype(jnp.bfloat16)
     M = M / (jnp.linalg.norm(M) + 1e-12)
     for a, b, c in abc_list:
         A = M.T @ M
@@ -33,7 +31,7 @@ def _orthogonalize(M):
         M = M @ (a * I + b * A + c * A @ A)
     if transpose:
         M = M.T
-    return M.astype(original_dtype)
+    return M
 
 def _hard_cap(M):
     """Apply min(1, x) approximately to the singular values of a single matrix. Credit: Franz Cecista."""
@@ -71,11 +69,83 @@ def _soft_cap(M, alpha):
         M = M.T
     return M
 
-def _pure_svd(M):
-    """Apply min(1, x) exactly to the singular values of a single matrix."""
+def _pure_svd(M, w_max=1):
+    """Apply min(w_max, x) exactly to the singular values of a single matrix."""
     U, S, Vh = jnp.linalg.svd(M, full_matrices=False)
-    S = jnp.clip(S, a_max=1)
+    S = jnp.clip(S, a_max=w_max)
     return U @ jnp.diag(S) @ Vh
+
+def _power_iterate(M, key, steps=16, eps=1e-12):
+    """Power iterate to find the principal singular value and vectors of M."""
+    transpose = M.shape[0] > M.shape[1]
+    if transpose:
+        M = M.T
+    A = M.T @ M
+
+    # we use fold_in get different random numbers for different matrices
+    # while avoiding the hassle of returning the subkey from splitting
+    subkey = jax.random.fold_in(key, jnp.sum(M))
+    v = jax.random.normal(subkey, shape=(M.shape[0],))
+    for _ in range(steps):
+        v /= jnp.linalg.norm(v)
+        v = A @ v
+    
+    norm_v = jnp.linalg.norm(v)
+    sigma_max = norm_v ** 0.5
+    v /= norm_v
+    
+    if transpose:
+        v = v.T
+    return M @ v / sigma_max, sigma_max, v  # u, sigma_max, v  --  the principal singular vector subspace
+
+def power_iter(M, key, steps=16, eps=1e-12):
+    transpose = M.shape[0] > M.shape[1]
+    if transpose:
+        M = M.T
+    A = M.T @ M
+
+    # we use fold_in get different random numbers for different matrices
+    # while avoiding the hassle of returning the subkey from splitting
+    subkey = jax.random.fold_in(key, jnp.sum(M))
+    v0 = jax.random.normal(subkey, shape=(M.shape[0],))
+    v0 /= jnp.linalg.norm(v0)
+
+    def cond_fun(state):
+        v, old_v, i = state
+        delta = jnp.max(jnp.abs(v - old_v))
+        return jnp.logical_and(delta > eps, i < steps)
+
+    def body_fun(state):
+        v, _, i = state
+        v_new = A @ v
+        v_new /= jnp.linalg.norm(v_new)
+        return (v_new, v, i + 1)
+
+    v, _, _ = jax.lax.while_loop(cond_fun, body_fun, (v0, v0, 0))
+    v_new = A @ v
+    sigma_max = jnp.linalg.norm(v_new) ** 0.5
+    if transpose:
+        v = v.T
+    return M @ v / sigma_max, sigma_max, v
+
+def _spectral_hammer(M, key, w_max=1):
+    """Set the largest singular value of M to w_max."""
+    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
+    outer = (u @ v).reshape(M.shape)   # calculate the principal vector subspace
+    change = w_max - sigma_max  # how much to hammer in the highest singular value
+    return M + change * outer
+
+def _spectral_weight_decay(M, key, wd=0.1):
+    """Decay the largest singular value of M by 1 - wd."""
+    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
+    outer = (u @ v).reshape(M.shape)   # calculate the principal vector subspace
+    change = wd * sigma_max  # how much to decay the highest singular value
+    return M - change * outer
+
+def _spectral_normalize(M, key):
+    """Normalize the singular values of M to 1."""
+    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
+    return M / jnp.maximum(1, sigma_max)  # clip at 1 but allow decaying to zero
 
 def soft_cap_coupling(w_max, wd, max_update_norm):
     """Calculates the strength for soft cap that bounds singular values at w_max."""
@@ -94,14 +164,14 @@ def hard_cap(M, **kwargs):
     return batch_project(M, _hard_cap)
 def soft_cap(M, alpha):
     return batch_project(M, lambda x: _soft_cap(x, alpha=alpha))
-def soft_cap1(M, **kwargs):
-    return batch_project(M, lambda x: _soft_cap(x, alpha=0.002))
-def soft_cap2(M, **kwargs):
-    return batch_project(M, lambda x: _soft_cap(x, alpha=0.05))
-def soft_cap3(M, **kwargs):
-    return batch_project(M, lambda x: _soft_cap(x, alpha=0.1))
-def pure_svd(M, **kwargs):
-    return batch_project(M, _pure_svd)
+def pure_svd(M, w_max=1, **kwargs):
+    return batch_project(M, lambda x: _pure_svd(x, w_max))
+def spectral_hammer(M, key, w_max=1):
+    return batch_project(M, lambda x: _spectral_hammer(x, key, w_max))
+def spectral_weight_decay(M, key, wd=0.1):
+    return batch_project(M, lambda x: _spectral_weight_decay(x, key, wd))
+def spectral_normalize(M, key):
+    return batch_project(M, lambda x: _spectral_normalize(x, key))
 
 # Embed
 def _embed_project(M, axis, max_inflation_factor):
@@ -151,14 +221,14 @@ class Linear(Atom):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin), dtype=self.dtype)
         return self.orthogonalize([weight])
     
-    def project(self, w, w_max=1.0, wd=0.0, max_update_norm=1.0):
+    def project(self, w, w_max=1.0, wd=0.0, max_update_norm=1.0, key=None):
         weight = w[0]
         casted = weight.astype(self.project_dtype)
         scale = jnp.sqrt(self.fanout / self.fanin)
         # max_update_norm is correct in the RMS->RMS induced norm,
         # but we divide by scale to account for the effect it will have on casted / scale
         alpha = soft_cap_coupling(w_max, wd, max_update_norm / scale)  # only some proj functions use this
-        projected = scale * self._project(casted / scale, alpha=alpha)
+        projected = scale * self._project(casted / scale, alpha=alpha, key=key)
         return [projected.astype(self.dtype)]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):

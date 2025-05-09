@@ -17,8 +17,6 @@ from modula.compound import GPT, MLP
 from modula.bond import Flatten
 from modula.atom import *
 
-np.random.seed(0)
-
 from data.shakespeare import load_shakespeare
 from data.cifar10 import load_cifar10
 from data.fineweb import load_fineweb
@@ -50,10 +48,10 @@ project_str_to_fn = {
     "orthogonal": orthogonalize,
     "hard_cap": hard_cap,
     "soft_cap": soft_cap,
-    "soft_cap1": soft_cap1,
-    "soft_cap2": soft_cap2,
-    "soft_cap3": soft_cap3,
     "pure_svd": pure_svd,
+    "spec_hammer": spectral_hammer,
+    "spec_wd": spectral_weight_decay,
+    "spec_normalize": spectral_normalize,
 }
 
 dtype_str_to_dtype = {
@@ -89,6 +87,7 @@ def train(args):
     # loss takes (model, w, inputs, targets), so we wrap model in first
     loss_and_grad = jax.jit(jax.value_and_grad(partial(loss, model)))
 
+    np.random.seed(args.seed)
     key = jax.random.PRNGKey(args.seed)
     key, subkey = jax.random.split(key)
     w = model.initialize(subkey)
@@ -145,7 +144,8 @@ def train(args):
         d_w = model.dualize(d_w) if args.post_dualize else d_w
 
         # Couples weight decay, optimizer step, and projection into one so they can share target_norm calculations
-        w = model.decay_step_project(w, d_w, w_max=args.w_max, wd=args.wd, lr=args.lr * schedule(step))
+        subkey, key = jax.random.split(key)
+        w = model.decay_step_project(w, d_w, w_max=args.w_max, wd=args.wd, lr=args.lr * schedule(step), key=subkey)
 
         running_loss += loss
         if step % args.log_interval == 0:

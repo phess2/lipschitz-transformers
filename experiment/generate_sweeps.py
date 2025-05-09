@@ -15,15 +15,14 @@ optimizer_pre_post_lr = [
 
 d_embeds = [256] #[12*16]
 project = [
-    #{"default": "none"},
+    {"default": "none"},
     #{"default": "orthogonal"},
     #{"default": "hard_cap"},
-    {"default": "soft_cap"},
-    #{"default": "soft_cap1"},
-    #{"default": "soft_cap2"},
-    #{"default": "soft_cap3"},
+    #{"default": "soft_cap"},
     #{"default": "pure_svd"},
-    #{"default": "orthogonal", "mlp_out": "pure_svd"},
+    #{"default": "spec_wd"},
+    #{"default": "spec_hammer"},
+    #{"default": "spec_normalize"},
 ]  # key: default or tracker string; value: none, orthogonal, hard_cap, soft_cap1, soft_cap2, soft_cap3, pure_svd
 model_dtypes = ["float32"]   # options: float8_e4m3fn, bfloat16, float32, float64
 project_dtypes = ["float32"]  # options: float8_e4m3fn, bfloat16, float32, float64
@@ -38,12 +37,7 @@ blocks_masses = [32]#, 16, 64]  # [1, 5, 25]
 scales_learnable = [False]
 layernorm_substitutes = ["none"]  # none, tanh, rmsnorm, layernorm
 
-wd_base = [0]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
-wd_and_wdlr_power = [  # wdlr_power is DISABLED -- due to linear coupling for soft cap
-    #(wd_base, 0),
-    (wd_base, 1),
-    #(wd_base, 2),
-] # 0 means decoupled, 1 means proportional to lr, 2 means proportional to lr^2
+weight_decay = [0]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
 
 seeds = [0]
 data = "shakespeare"      # fineweb, shakespeare, cifar
@@ -90,52 +84,50 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                             for blocks_mass in blocks_masses:
                                                 for layernorm_substitute in layernorm_substitutes:
                                                     for wmax in w_max:
-                                                        for wds, wd_lr_power in wd_and_wdlr_power:
-                                                            for wd in wds:
-                                                                for d_embed in d_embeds:
-                                                                    for schedule in schedules:
-                                                                        for randomize_label in randomize_labels:
-                                                                            for seed in seeds:
-                                                                                combinations.append({
-                                                                                    'd_embed': d_embed,
-                                                                                    'lr': lr,
-                                                                                    'wd': wd,
-                                                                                    'wd_lr_power': wd_lr_power,
-                                                                                    'num_blocks': num_blocks,
-                                                                                    'seq_len': seq_len,
-                                                                                    'num_heads': num_heads,
-                                                                                    'softmax_scale': softmax_scale,
-                                                                                    'final_scale': final_scale,
-                                                                                    'residual_scale': residual_scale,
-                                                                                    'scales_learnable': scale_learnable,
-                                                                                    'blocks_mass': blocks_mass,
-                                                                                    'layernorm_substitute': layernorm_substitute,
-                                                                                    'optimizer': optimizer,
-                                                                                    'max_embed_inflation_factor': max_embed_inflation_factor,
-                                                                                    'use_unembed': use_unembed,
-                                                                                    'pre_dualize': pre,
-                                                                                    'post_dualize': post,
-                                                                                    'beta1': beta1,
-                                                                                    'beta2': beta2,
-                                                                                    'batch_size': batch_size,
-                                                                                    'accum_steps': accum_steps,
-                                                                                    'zero_init': zero_init,
-                                                                                    'project': proj,
-                                                                                    'w_max': wmax,
-                                                                                    'model_dtype': model_dtype,
-                                                                                    'project_dtype': project_dtype,
-                                                                                    'steps': steps,
-                                                                                    'schedule': schedule,
-                                                                                    'data': data,
-                                                                                    'randomize_labels': randomize_label,
-                                                                                    'vocab_size': vocab_size,
-                                                                                    'seed': seed,
-                                                                                    'log_interval': log_interval,
-                                                                                    'val_interval': val_interval,
-                                                                                    'val_iters': val_iters,
-                                                                                    'save_weights': save_weights,
-                                                                                    'output_dir': output_dir,
-                                                                                })
+                                                        for wd in weight_decay:
+                                                            for d_embed in d_embeds:
+                                                                for schedule in schedules:
+                                                                    for randomize_label in randomize_labels:
+                                                                        for seed in seeds:
+                                                                            combinations.append({
+                                                                                'd_embed': d_embed,
+                                                                                'lr': lr,
+                                                                                'wd': wd,
+                                                                                'num_blocks': num_blocks,
+                                                                                'seq_len': seq_len,
+                                                                                'num_heads': num_heads,
+                                                                                'softmax_scale': softmax_scale,
+                                                                                'final_scale': final_scale,
+                                                                                'residual_scale': residual_scale,
+                                                                                'scales_learnable': scale_learnable,
+                                                                                'blocks_mass': blocks_mass,
+                                                                                'layernorm_substitute': layernorm_substitute,
+                                                                                'optimizer': optimizer,
+                                                                                'max_embed_inflation_factor': max_embed_inflation_factor,
+                                                                                'use_unembed': use_unembed,
+                                                                                'pre_dualize': pre,
+                                                                                'post_dualize': post,
+                                                                                'beta1': beta1,
+                                                                                'beta2': beta2,
+                                                                                'batch_size': batch_size,
+                                                                                'accum_steps': accum_steps,
+                                                                                'zero_init': zero_init,
+                                                                                'project': proj,
+                                                                                'w_max': wmax,
+                                                                                'model_dtype': model_dtype,
+                                                                                'project_dtype': project_dtype,
+                                                                                'steps': steps,
+                                                                                'schedule': schedule,
+                                                                                'data': data,
+                                                                                'randomize_labels': randomize_label,
+                                                                                'vocab_size': vocab_size,
+                                                                                'seed': seed,
+                                                                                'log_interval': log_interval,
+                                                                                'val_interval': val_interval,
+                                                                                'val_iters': val_iters,
+                                                                                'save_weights': save_weights,
+                                                                                'output_dir': output_dir,
+                                                                            })
 
 # Save combinations to file
 root_path = os.getenv('ROOT_PATH')
