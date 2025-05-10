@@ -24,7 +24,7 @@ mkdir -p results
 source ../.modula/bin/activate
 
 # Number of jobs to run in parallel
-jobs_in_parallel=1
+jobs_in_parallel=16
 
 export XLA_PYTHON_CLIENT_MEM_FRACTION=$(echo "0.9/$jobs_in_parallel" | bc -l)
 
@@ -36,7 +36,7 @@ echo "Running $jobs_in_parallel jobs in parallel:"
 for j in $(seq 0 $(($jobs_in_parallel-1))); do
     idx=$((i * jobs_in_parallel + j))
     echo "python train.py --job_idx $idx"
-    python train.py --job_idx $idx --sweep_config_path sweep_configs/sweep_specham/parameter_grid.json &
+    python train.py --job_idx $idx --sweep_config_path sweep_configs/sweep_specnorm/parameter_grid.json &
     sleep 1
 done
 wait

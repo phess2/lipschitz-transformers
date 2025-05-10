@@ -117,7 +117,7 @@ def _spectral_hammer(M, key, w_max=1):
 def _spectral_weight_decay(M, key, wd=0.1):
     """Decay the largest singular value of M by 1 - wd."""
     u, sigma_max, v = _power_iterate(M, key)  # find the principal singular vector subspace
-    outer = (u @ v).reshape(M.shape)   # calculate the principal vector subspace
+    outer = jnp.outer(u, v)   # calculate the principal vector subspace
     change = wd * sigma_max  # how much to decay the highest singular value
     return M - change * outer
 
