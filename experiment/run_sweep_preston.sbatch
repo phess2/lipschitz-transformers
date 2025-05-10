@@ -10,7 +10,7 @@
 #SBATCH --open-mode=append
 #SBATCH --mem=128GB
 #SBATCH --time=2:00:00
-#SBATCH -p mcdermott  #use-everything
+#SBATCH -p mcdermott
 
 export PYTHONUNBUFFERED=1
 
@@ -36,7 +36,7 @@ echo "Running $jobs_in_parallel jobs in parallel:"
 for j in $(seq 0 $(($jobs_in_parallel-1))); do
     idx=$((i * jobs_in_parallel + j))
     echo "python train.py --job_idx $idx"
-    python train.py --job_idx $idx --sweep_config_path sweep_configs/sweep_specnorm/parameter_grid.json &
+    python train.py --job_idx $idx --sweep_config_path sweep_configs/sweep_specwd_2/parameter_grid.json &
     sleep 1
 done
 wait
