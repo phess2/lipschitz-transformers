@@ -162,7 +162,7 @@ def orthogonalize(M, **kwargs):
     return batch_project(M, _orthogonalize)
 def hard_cap(M, **kwargs):
     return batch_project(M, _hard_cap)
-def soft_cap(M, alpha):
+def soft_cap(M, alpha, **kwargs):
     return batch_project(M, lambda x: _soft_cap(x, alpha=alpha))
 def pure_svd(M, w_max=1, **kwargs):
     return batch_project(M, lambda x: _pure_svd(x, w_max))

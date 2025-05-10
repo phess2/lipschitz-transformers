@@ -257,7 +257,7 @@ def save_results(results, args, weights_checkpoints):
 
     uniqueness_hash = hash(json.dumps(args))
     filename = (
-        f"_{args.data}_{args.optimizer}_"
+        f"MLP_{args.project}_{args.data}_{args.optimizer}_"
         f"embed{args.d_embed}_lr{args.lr:.4f}_"
         f"wd{args.wd:.4f}_steps{args.steps}_"
         f"{abs(uniqueness_hash):x}.json"
