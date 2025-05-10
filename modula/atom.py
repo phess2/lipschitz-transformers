@@ -220,7 +220,7 @@ class Linear(Atom):
     def log(self, w, grad_w):
         if self.tracker is None:
             return {}
-        
+
         if "weight_norm" not in self.log_info:
             self.log_info["weight_norm"] = []
         fan_out, fan_in = w[0].shape
@@ -230,12 +230,15 @@ class Linear(Atom):
             self.log_info["raw_grad_norm"] = []
         self.log_info["raw_grad_norm"].append(jnp.linalg.norm(grad_w[0].astype(jnp.float32), ord=2))
 
-        
-        if "cos_angle_w_with_d_w" not in self.log_info:
-            self.log_info["cos_angle_w_with_d_w"] = []
-        self.log_info["cos_angle_w_with_d_w"].append(
-            jnp.sum(w[0].flatten() * grad_w[0].flatten()) / (jnp.linalg.norm(w[0]) * jnp.linalg.norm(grad_w[0]))
-        )
+        # if "cos_angle_w_with_d_w" not in self.log_info:
+        #     self.log_info["cos_angle_w_with_d_w"] = []
+        # self.log_info["cos_angle_w_with_d_w"].append(
+        #     jnp.sum(w[0].flatten() * grad_w[0].flatten()) / (jnp.linalg.norm(w[0]) * jnp.linalg.norm(grad_w[0]))
+        # )
+
+        if 'spectral_norm' not in self.log_info:
+            self.log_info['spectral_norm'] = []
+        self.log_info['spectral_norm'].append(jnp.linalg.svd(w[0], compute_uv=False)[0])
         return {self.tracker: self.log_info}
 
 
