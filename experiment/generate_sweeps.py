@@ -50,8 +50,18 @@ accum_steps = 8 if data == "fineweb" else 1
 vocab_size = 50304 if data == "fineweb" else 65
 
 epochs = 50
-epoch_steps = 50000 // batch_size
-steps = int(epochs * epoch_steps) if data == "cifar" else 2000
+# For CIFAR-10, we have 50,000 training images
+if data == "cifar":
+    # Calculate steps per epoch using ceil division to ensure all data is seen
+    samples_per_epoch = 50000
+    epoch_steps = (samples_per_epoch + batch_size - 1) // batch_size  # ceil division
+    steps = int(epochs * epoch_steps)
+elif data == "shakespeare":
+    epoch_steps = 1000  # Assuming this is appropriate for shakespeare
+    steps = 2000
+elif data == "fineweb":
+    epoch_steps = 500  # Assuming this is appropriate for fineweb
+    steps = 2000
 beta1s = [0.9]
 beta2s = [0.95]
 schedules = ["linear"]      # linear, cosine, or none
