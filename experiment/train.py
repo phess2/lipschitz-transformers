@@ -197,7 +197,7 @@ def train(args):
             accuracies.append(float(val_acc_sum / val_step))
             print_log(f"Step:{step}/{args.steps} val_loss:{val_losses[-1]:.4f} val_acc:{accuracies[-1]:.4f}", args.job_idx, indent=1)
         
-        if step > 0 and step % (args.steps // args.num_checkpoints) == 0:
+        if args.num_checkpoints > 0 and step > 0 and step % (args.steps // max(1, args.num_checkpoints)) == 0:
             w_checkpoints.append(copy.deepcopy(w))
 
         if step >= args.steps:
