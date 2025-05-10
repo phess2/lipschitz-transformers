@@ -58,7 +58,7 @@ class Module:
         # Weight list, update list, learning rate, raw gradient --> updated weight list
         raise NotImplementedError
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, spectral_wd=None, lr=None, target_norm=1.0, key=None):
         # Weight list, update list, weight norm max, weight decay, learning rate, target norm --> updated weight list
         raise NotImplementedError
     
@@ -99,13 +99,13 @@ class Atom(Module):
         # d_w is the argmax of Tr(G^T T), the dual norm is the max
         dual_norm = 1 if g is None else jax.numpy.linalg.norm(g[0], "nuc") # jax.numpy.sum(d_w[0] * g[0])  # target norm messes this up
         return [w[0] - lr * dual_norm * d_w[0]]
-    
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
+
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, spectral_wd=None, lr=None, target_norm=1.0, key=None):
         # the weight update d_w already has norm target_norm
         max_update_norm = lr * target_norm
         w_decayed = w[0] * (1 - wd * max_update_norm)
         w_stepped = w_decayed - lr * d_w[0]
-        w_projected = self.project([w_stepped], w_max=w_max, wd=wd * max_update_norm, max_update_norm=max_update_norm, key=key)
+        w_projected = self.project([w_stepped], w_max=w_max, wd=wd * max_update_norm, spectral_wd=spectral_wd, max_update_norm=max_update_norm, key=key)
         return w_projected
 
 class Bond(Module):
@@ -127,7 +127,7 @@ class Bond(Module):
     def step(self, w, d_w, lr, g=None):
         return []
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, spectral_wd=None, lr=None, target_norm=1.0, key=None):
         return []
     
     def log(self, w, grad_w):
@@ -187,7 +187,7 @@ class CompositeModule(Module):
         step1 = m1.step(w1, d_w1, lr, g1)
         return step0 + step1
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, spectral_wd=None, lr=None, target_norm=1.0, key=None):
         if self.mass == 0:
             return w
         m0, m1 = self.children
@@ -195,8 +195,8 @@ class CompositeModule(Module):
         w1 = w[m0.atoms:] if w is not None else None
         d_w0 = d_w[:m0.atoms] if d_w is not None else None
         d_w1 = d_w[m0.atoms:] if d_w is not None else None
-        w0 = m0.decay_step_project(w0, d_w0, w_max, wd, lr, target_norm = target_norm * m0.mass / self.mass / m1.sensitivity, key=key)
-        w1 = m1.decay_step_project(w1, d_w1, w_max, wd, lr, target_norm = target_norm * m1.mass / self.mass, key=key)
+        w0 = m0.decay_step_project(w0, d_w0, w_max, wd, spectral_wd, lr, target_norm = target_norm * m0.mass / self.mass / m1.sensitivity, key=key)
+        w1 = m1.decay_step_project(w1, d_w1, w_max, wd, spectral_wd, lr, target_norm = target_norm * m1.mass / self.mass, key=key)
         return w0 + w1
 
     def log(self, w, grad_w):
@@ -270,14 +270,14 @@ class TupleModule(Module):
             g = g[m.atoms:] if g is not None else None
         return steps
     
-    def decay_step_project(self, w, d_w, w_max=None, wd=None, lr=None, target_norm=1.0, key=None):
+    def decay_step_project(self, w, d_w, w_max=None, wd=None, spectral_wd=None, lr=None, target_norm=1.0, key=None):
         if self.mass == 0:
             return w
         steps = []
         for m in self.children:
             w_m = w[:m.atoms]
             d_w_m = d_w[:m.atoms]
-            w_m = m.decay_step_project(w_m, d_w_m, w_max, wd, lr, target_norm = target_norm * m.mass / self.mass, key=key)
+            w_m = m.decay_step_project(w_m, d_w_m, w_max, wd, spectral_wd, lr, target_norm = target_norm * m.mass / self.mass, key=key)
             steps += w_m
             w = w[m.atoms:]
             d_w = d_w[m.atoms:]

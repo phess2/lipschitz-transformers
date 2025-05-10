@@ -114,11 +114,11 @@ def _spectral_hammer(M, key, w_max=1):
     change = w_max - sigma_max  # how much to hammer in the highest singular value
     return M + change * outer
 
-def _spectral_weight_decay(M, key, wd=0.1):
+def _spectral_weight_decay(M, key, spectral_wd=0.1):
     """Decay the largest singular value of M by 1 - wd."""
     u, sigma_max, v = _power_iterate(M, key)  # find the principal singular vector subspace
     outer = jnp.outer(u, v)   # calculate the principal vector subspace
-    change = wd * sigma_max  # how much to decay the highest singular value
+    change = spectral_wd * sigma_max  # how much to decay the highest singular value
     return M - change * outer
 
 def _spectral_normalize(M, key):
@@ -147,8 +147,8 @@ def pure_svd(M, w_max=1, **kwargs):
     return batch_project(M, lambda x: _pure_svd(x, w_max))
 def spectral_hammer(M, key, w_max=1, **kwargs):
     return batch_project(M, lambda x: _spectral_hammer(x, key, w_max))
-def spectral_weight_decay(M, key, wd=0.1, **kwargs):
-    return batch_project(M, lambda x: _spectral_weight_decay(x, key, wd))
+def spectral_weight_decay(M, key, spectral_wd=0.1, **kwargs):
+    return batch_project(M, lambda x: _spectral_weight_decay(x, key, spectral_wd))
 def spectral_normalize(M, key, **kwargs):
     return batch_project(M, lambda x: _spectral_normalize(x, key))
 
@@ -192,7 +192,7 @@ class Linear(Atom):
         weight = w[0]
         return [orthogonalize(weight) * jnp.sqrt(self.fanout / self.fanin)]
 
-    def initialize(self, key):
+    def initialize(self, key): 
         if self.tracker is not None:
             self.log_info = {}
         if self.zero_init:
@@ -200,14 +200,14 @@ class Linear(Atom):
         weight = jax.random.normal(key, shape=(self.fanout, self.fanin), dtype=self.dtype)
         return self.orthogonalize([weight])
     
-    def project(self, w, w_max=1.0, wd=0.0, max_update_norm=1.0, key=None):
+    def project(self, w, w_max=1.0, wd=0.0, spectral_wd=0.0, max_update_norm=1.0, key=None):
         weight = w[0]
         casted = weight.astype(self.project_dtype)
         scale = jnp.sqrt(self.fanout / self.fanin)
         # max_update_norm is correct in the RMS->RMS induced norm,
         # but we divide by scale to account for the effect it will have on casted / scale
         alpha = soft_cap_coupling(w_max, wd, max_update_norm / scale)  # only some proj functions use this
-        projected = scale * self._project(casted / scale, alpha=alpha, key=key)
+        projected = scale * self._project(casted / scale, spectral_wd=spectral_wd, alpha=alpha, key=key)
         return [projected.astype(self.dtype)]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):

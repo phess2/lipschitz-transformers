@@ -157,7 +157,12 @@ def train(args):
 
         # Couples weight decay, optimizer step, and projection into one so they can share target_norm calculations
         subkey, key = jax.random.split(key)
-        w = model.decay_step_project(w, d_w, w_max=args.w_max, wd=args.wd, lr=args.lr * schedule(step), key=subkey)
+        # check is args has spectral_wd, if not, set it to 0
+        try:
+            spectral_wd = args.spectral_wd
+        except AttributeError:
+            args.spectral_wd = 0
+        w = model.decay_step_project(w, d_w, w_max=args.w_max, wd=args.wd, spectral_wd=args.spectral_wd, lr=args.lr * schedule(step), key=subkey)
 
         running_loss += loss
         if step % args.log_interval == 0:

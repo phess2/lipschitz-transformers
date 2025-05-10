@@ -10,7 +10,7 @@ num_checkpoints = 0   # 0 saves readable results file, 1 saves final weights, n>
 
 optimizer_pre_post_lr = [
     #("adam", False, False, np.logspace(-4, -0.5, 12)),
-    ("muon", False, True, np.logspace(-3, 0, 16)), 
+    ("muon", False, True, np.logspace(-2, 1, 16)), 
 ]
 
 d_embeds = [256] #[12*16]
@@ -20,9 +20,9 @@ project = [
     # {"default": "hard_cap"},
     # {"default": "soft_cap"},
     #{"default": "pure_svd"},
-    # {"default": "spec_wd"},
+    {"default": "spec_wd"},
     # {"default": "spec_hammer"},
-    {"default": "spec_normalize"},
+    # {"default": "spec_normalize"},
 ]  # key: default or tracker string; value: none, orthogonal, hard_cap, soft_cap1, soft_cap2, soft_cap3, pure_svd
 model_dtypes = ["float32"]   # options: float8_e4m3fn, bfloat16, float32, float64
 project_dtypes = ["float32"]  # options: float8_e4m3fn, bfloat16, float32, float64
@@ -37,7 +37,8 @@ blocks_masses = [32]#, 16, 64]  # [1, 5, 25]
 scales_learnable = [False]
 layernorm_substitutes = ["none"]  # none, tanh, rmsnorm, layernorm
 
-weight_decay = [0]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
+# weight_decay = [0]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
+spectral_weight_decay = [0.1]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
 
 seeds = [0]
 data = "cifar"      # fineweb, shakespeare, cifar
@@ -84,7 +85,7 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                             for blocks_mass in blocks_masses:
                                                 for layernorm_substitute in layernorm_substitutes:
                                                     for wmax in w_max:
-                                                        for wd in weight_decay:
+                                                        for spectral_wd in spectral_weight_decay:
                                                             for d_embed in d_embeds:
                                                                 for schedule in schedules:
                                                                     for randomize_label in randomize_labels:
@@ -92,7 +93,8 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                                             combinations.append({
                                                                                 'd_embed': d_embed,
                                                                                 'lr': lr,
-                                                                                'wd': wd,
+                                                                                'wd': 0, #! note that i current hard code weight decay to 0
+                                                                                'spectral_wd': spectral_wd,
                                                                                 'num_blocks': num_blocks,
                                                                                 'seq_len': seq_len,
                                                                                 'num_heads': num_heads,
