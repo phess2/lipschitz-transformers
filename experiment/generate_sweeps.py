@@ -6,29 +6,29 @@ import os
 
 dotenv.load_dotenv()
 
-num_checkpoints = 5   # 0 saves readable results file, 1 saves final weights, n>1 saves evenly spaced checkpoints
+num_checkpoints = 0   # 0 saves readable results file, 1 saves final weights, n>1 saves evenly spaced checkpoints
 
 optimizer_pre_post_lr = [
     #("adam", False, False, np.logspace(-4, -0.5, 12)),
-    ("muon", False, True, np.logspace(-2, 0, 12)), 
+    ("muon", False, True, np.logspace(-3, 0, 16)), 
 ]
 
 d_embeds = [256] #[12*16]
 project = [
     # {"default": "none"},
-    #{"default": "orthogonal"},
-    #{"default": "hard_cap"},
-    #{"default": "soft_cap"},
+    # {"default": "orthogonal"},
+    # {"default": "hard_cap"},
+    # {"default": "soft_cap"},
     #{"default": "pure_svd"},
-    #{"default": "spec_wd"},
-    #{"default": "spec_hammer"},
-    #{"default": "spec_normalize"},
+    # {"default": "spec_wd"},
+    # {"default": "spec_hammer"},
+    {"default": "spec_normalize"},
 ]  # key: default or tracker string; value: none, orthogonal, hard_cap, soft_cap1, soft_cap2, soft_cap3, pure_svd
 model_dtypes = ["float32"]   # options: float8_e4m3fn, bfloat16, float32, float64
 project_dtypes = ["float32"]  # options: float8_e4m3fn, bfloat16, float32, float64
 max_embed_inflation_factors = [16]#, 64, 256]#1, 16, 256, 4096]  # Caps the amount duality can increase each column of the embedding gradient
 use_unembeds = [False]
-w_max = [2]#1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
+w_max = [1]#1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
 
 residual_scales = [1]  # (1 - a/num_blocks) * x + (a/num_blocks) * block(x)
 softmax_scale = 1

@@ -257,7 +257,7 @@ def save_results(results, args, weights_checkpoints):
 
     uniqueness_hash = hash(json.dumps(args))
     filename = (
-        f"MLP_{args.project}_{args.data}_{args.optimizer}_"
+        f"MLP_{args.project['default']}_{args.data}_{args.optimizer}_"
         f"embed{args.d_embed}_lr{args.lr:.4f}_"
         f"wd{args.wd:.4f}_steps{args.steps}_"
         f"{abs(uniqueness_hash):x}.json"
@@ -320,10 +320,11 @@ def main():
     # Create parser and add arguments
     parser = argparse.ArgumentParser(description="Modula train script for sweeps")
     parser.add_argument("--job_idx", type=int, default=-1, help="Index of the job")
+    parser.add_argument("--sweep_config_path", type=str, help="Path to the sweep config file")
     args = parser.parse_args()
     assert args.job_idx != -1, "job_idx must be set to the index of the job"
     
-    with open('sweep_configs/parameter_grid.json', 'r') as f:
+    with open(args.sweep_config_path, 'r') as f:
         job_idx = args.job_idx
         args = json.load(f)[job_idx]
         args["job_idx"] = job_idx

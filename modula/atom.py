@@ -85,29 +85,7 @@ def _power_iterate(M, key, steps=16, eps=1e-12):
     # we use fold_in get different random numbers for different matrices
     # while avoiding the hassle of returning the subkey from splitting
     subkey = jax.random.fold_in(key, jnp.sum(M))
-    v = jax.random.normal(subkey, shape=(M.shape[0],))
-    for _ in range(steps):
-        v /= jnp.linalg.norm(v)
-        v = A @ v
-    
-    norm_v = jnp.linalg.norm(v)
-    sigma_max = norm_v ** 0.5
-    v /= norm_v
-    
-    if transpose:
-        v = v.T
-    return M @ v / sigma_max, sigma_max, v  # u, sigma_max, v  --  the principal singular vector subspace
-
-def power_iter(M, key, steps=16, eps=1e-12):
-    transpose = M.shape[0] > M.shape[1]
-    if transpose:
-        M = M.T
-    A = M.T @ M
-
-    # we use fold_in get different random numbers for different matrices
-    # while avoiding the hassle of returning the subkey from splitting
-    subkey = jax.random.fold_in(key, jnp.sum(M))
-    v0 = jax.random.normal(subkey, shape=(M.shape[0],))
+    v0 = jax.random.normal(subkey, shape=(M.shape[1],))
     v0 /= jnp.linalg.norm(v0)
 
     def cond_fun(state):
@@ -126,25 +104,26 @@ def power_iter(M, key, steps=16, eps=1e-12):
     sigma_max = jnp.linalg.norm(v_new) ** 0.5
     if transpose:
         v = v.T
-    return M @ v / sigma_max, sigma_max, v
+    u = M @ v / sigma_max
+    return u, sigma_max, v
 
 def _spectral_hammer(M, key, w_max=1):
     """Set the largest singular value of M to w_max."""
-    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
-    outer = (u @ v).reshape(M.shape)   # calculate the principal vector subspace
+    u, sigma_max, v = _power_iterate(M, key)  # find the principal singular vector subspace
+    outer = jnp.outer(u, v)   # calculate the principal vector subspace
     change = w_max - sigma_max  # how much to hammer in the highest singular value
     return M + change * outer
 
 def _spectral_weight_decay(M, key, wd=0.1):
     """Decay the largest singular value of M by 1 - wd."""
-    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
+    u, sigma_max, v = _power_iterate(M, key)  # find the principal singular vector subspace
     outer = (u @ v).reshape(M.shape)   # calculate the principal vector subspace
     change = wd * sigma_max  # how much to decay the highest singular value
     return M - change * outer
 
 def _spectral_normalize(M, key):
     """Normalize the singular values of M to 1."""
-    u, sigma_max, v = _power_iterate(M.T @ M, key)  # find the principal singular vector subspace
+    u, sigma_max, v = _power_iterate(M, key)  # find the principal singular vector subspace
     return M / jnp.maximum(1, sigma_max)  # clip at 1 but allow decaying to zero
 
 def soft_cap_coupling(w_max, wd, max_update_norm):
@@ -166,11 +145,11 @@ def soft_cap(M, alpha, **kwargs):
     return batch_project(M, lambda x: _soft_cap(x, alpha=alpha))
 def pure_svd(M, w_max=1, **kwargs):
     return batch_project(M, lambda x: _pure_svd(x, w_max))
-def spectral_hammer(M, key, w_max=1):
+def spectral_hammer(M, key, w_max=1, **kwargs):
     return batch_project(M, lambda x: _spectral_hammer(x, key, w_max))
-def spectral_weight_decay(M, key, wd=0.1):
+def spectral_weight_decay(M, key, wd=0.1, **kwargs):
     return batch_project(M, lambda x: _spectral_weight_decay(x, key, wd))
-def spectral_normalize(M, key):
+def spectral_normalize(M, key, **kwargs):
     return batch_project(M, lambda x: _spectral_normalize(x, key))
 
 # Embed
