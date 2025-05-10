@@ -79,6 +79,7 @@ def create_model(args):
     kwargs["project"] = {marker: project_str_to_fn[project] for marker, project in args.project.items()}
     kwargs["dtype"] = dtype_str_to_dtype[args.model_dtype]
     kwargs["project_dtype"] = dtype_str_to_dtype[args.project_dtype]
+    kwargs['sensitive_to_wmax'] = {marker: project in ["hard_cap", "orthogonal", "spec_normalize"] for marker, project in args.project.items()}
 
     if args.data == "fineweb" or args.data == "shakespeare":
         return GPT(**kwargs)
@@ -97,6 +98,7 @@ def train(args):
 
     # loss takes (model, w, inputs, targets), so we wrap model in first
     loss_and_grad = jax.jit(jax.value_and_grad(partial(loss, model)))
+    # loss_and_grad = jax.value_and_grad(partial(loss, model))
 
     np.random.seed(args.seed)
     key = jax.random.PRNGKey(args.seed)

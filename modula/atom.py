@@ -165,7 +165,7 @@ def unembed_project(M, max_inflation_factor, **kwargs):
     return batch_project(M, lambda x: _embed_project(x, -1, max_inflation_factor))
 
 class Linear(Atom):
-    def __init__(self, fanout, fanin, dtype=jnp.float32, project_dtype=None, zero_init=False, project=None, tracker=None):
+    def __init__(self, fanout, fanin, dtype=jnp.float32, project_dtype=None, zero_init=False, project=None, sensitive_to_wmax=None, tracker=None):
         super().__init__(tracker)
         self.fanin  = fanin
         self.fanout = fanout
@@ -177,6 +177,7 @@ class Linear(Atom):
         self.sensitivity = 1
 
         self._project = lambda x, **kwargs: x
+        self.sensitive_to_wmax = sensitive_to_wmax['default'] if sensitive_to_wmax is not None else False
         if project is not None:
             if tracker in project:  # project is a dictionary mapping tracker names to projection functions
                 self._project = project[tracker]
@@ -207,6 +208,8 @@ class Linear(Atom):
         # max_update_norm is correct in the RMS->RMS induced norm,
         # but we divide by scale to account for the effect it will have on casted / scale
         alpha = soft_cap_coupling(w_max, wd, max_update_norm / scale)  # only some proj functions use this
+        if self.sensitive_to_wmax:
+            scale *= w_max
         projected = scale * self._project(casted / scale, spectral_wd=spectral_wd, alpha=alpha, key=key)
         return [projected.astype(self.dtype)]
 

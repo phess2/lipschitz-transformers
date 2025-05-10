@@ -2,8 +2,8 @@ from modula.abstract import *
 from modula.atom import *
 from modula.bond import *
 
-def MLP(output_dim, input_dim, d_embed, num_blocks, final_scale=1, dtype=None, project_dtype=None, zero_init=False, project=None, **kwargs):
-    project_kwargs = {"dtype": dtype, "project_dtype": project_dtype, "project": project}
+def MLP(output_dim, input_dim, d_embed, num_blocks, final_scale=1, dtype=None, project_dtype=None, zero_init=False, project=None, sensitive_to_wmax=None, **kwargs):
+    project_kwargs = {"dtype": dtype, "project_dtype": project_dtype, "project": project, "sensitive_to_wmax": sensitive_to_wmax}
     m = Linear(output_dim, d_embed, **project_kwargs, tracker="mlp_out") @ ReLU()
     for i in range(num_blocks-2):
         m = m @ Linear(d_embed, d_embed, **project_kwargs, tracker=f"mlp_{i}") @ ReLU()
