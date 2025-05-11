@@ -75,37 +75,28 @@ def _pure_svd(M, w_max=1):
     S = jnp.clip(S, a_max=w_max)
     return U @ jnp.diag(S) @ Vh
 
-def _power_iterate(M, key, steps=16, eps=1e-12):
+def _power_iterate(M, key, steps=16):
     """Power iterate to find the principal singular value and vectors of M."""
-    transpose = M.shape[0] > M.shape[1]
-    if transpose:
-        M = M.T
-    A = M.T @ M
+    # Fold in dimensions to diversify the key per matrix shape
+    init_key = jax.random.fold_in(key, M.shape[0])
+    init_key = jax.random.fold_in(init_key, M.shape[1])
+    # Sample initial right singular vector
+    v = jax.random.normal(init_key, (M.shape[1],))
+    v = v / jnp.linalg.norm(v)
 
-    # we use fold_in get different random numbers for different matrices
-    # while avoiding the hassle of returning the subkey from splitting
-    subkey = jax.random.fold_in(key, jnp.sum(M))
-    v0 = jax.random.normal(subkey, shape=(M.shape[1],))
-    v0 /= jnp.linalg.norm(v0)
+    def body_fn(v, _):
+        # Multiply by A^T A
+        w = M.T @ (M @ v)
+        # Normalize
+        return w / jnp.linalg.norm(w), None
 
-    def cond_fun(state):
-        v, old_v, i = state
-        delta = jnp.max(jnp.abs(v - old_v))
-        return jnp.logical_and(delta > eps, i < steps)
-
-    def body_fun(state):
-        v, _, i = state
-        v_new = A @ v
-        v_new /= jnp.linalg.norm(v_new)
-        return (v_new, v, i + 1)
-
-    v, _, _ = jax.lax.while_loop(cond_fun, body_fun, (v0, v0, 0))
-    v_new = A @ v
-    sigma_max = jnp.linalg.norm(v_new) ** 0.5
-    if transpose:
-        v = v.T
-    u = M @ v / sigma_max
-    return u, sigma_max, v
+    # Run power iterations
+    v, _ = jax.lax.scan(body_fn, v, None, length=steps)
+    # Compute singular value and left singular vector
+    Mv = M @ v
+    sigma = jnp.linalg.norm(Mv)
+    u = Mv / sigma
+    return u, sigma, v
 
 def _spectral_hammer(M, key, w_max=1):
     """Set the largest singular value of M to w_max."""
