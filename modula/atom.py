@@ -216,7 +216,7 @@ class Linear(Atom):
         alpha = soft_cap_coupling(w_max, wd, max_update_norm / scale)  # only some proj functions use this
         if self.sensitive_to_wmax:
             scale *= w_max
-        projected = scale * self._project(casted / scale, spectral_wd=spectral_wd, alpha=alpha, key=key)
+        projected = scale * self._project(casted / scale, spectral_wd=spectral_wd, alpha=alpha, w_max = w_max, key=key)
         return [projected.astype(self.dtype)]
 
     def dualize(self, grad_w, w=None, target_norm=1.0):
