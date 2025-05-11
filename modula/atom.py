@@ -75,27 +75,42 @@ def _pure_svd(M, w_max=1):
     S = jnp.clip(S, a_max=w_max)
     return U @ jnp.diag(S) @ Vh
 
-def _power_iterate(M, key, steps=16):
+def _power_iterate(A, key, num_iters=16):
     """Power iterate to find the principal singular value and vectors of M."""
+    m, n = A.shape
     # Fold in dimensions to diversify the key per matrix shape
-    init_key = jax.random.fold_in(key, M.shape[0])
-    init_key = jax.random.fold_in(init_key, M.shape[1])
-    # Sample initial right singular vector
-    v = jax.random.normal(init_key, (M.shape[1],))
-    v = v / jnp.linalg.norm(v)
+    init_key = jax.random.fold_in(key, m)
+    init_key = jax.random.fold_in(init_key, n)
 
-    def body_fn(v, _):
-        # Multiply by A^T A
-        w = M.T @ (M @ v)
-        # Normalize
-        return w / jnp.linalg.norm(w), None
+    if m < n:
+        # iterate on AA^T to find u (shape m)
+        u = jax.random.normal(init_key, (m,))
+        u = u / jnp.linalg.norm(u)
 
-    # Run power iterations
-    v, _ = jax.lax.scan(body_fn, v, None, length=steps)
-    # Compute singular value and left singular vector
-    Mv = M @ v
-    sigma = jnp.linalg.norm(Mv)
-    u = Mv / sigma
+        def body_u(u, _):
+            w = A @ (A.T @ u)
+            return w / jnp.linalg.norm(w), None
+
+        u, _ = jax.lax.scan(body_u, u, None, length=num_iters)
+        # compute sigma and v
+        ATu = A.T @ u
+        sigma = jnp.linalg.norm(ATu)
+        v = ATu / sigma
+    else:
+        # iterate on A^T A to find v (shape n)
+        v = jax.random.normal(init_key, (n,))
+        v = v / jnp.linalg.norm(v)
+
+        def body_v(v, _):
+            w = A.T @ (A @ v)
+            return w / jnp.linalg.norm(w), None
+
+        v, _ = jax.lax.scan(body_v, v, None, length=num_iters)
+        # compute sigma and u
+        Av = A @ v
+        sigma = jnp.linalg.norm(Av)
+        u = Av / sigma
+
     return u, sigma, v
 
 def _spectral_hammer(M, key, w_max=1):
