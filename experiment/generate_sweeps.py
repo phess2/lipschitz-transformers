@@ -6,11 +6,11 @@ import os
 
 dotenv.load_dotenv()
 
-num_checkpoints = 0   # 0 saves readable results file, 1 saves final weights, n>1 saves evenly spaced checkpoints
+num_checkpoints = 1   # 0 saves readable results file, 1 saves final weights, n>1 saves evenly spaced checkpoints
 
 optimizer_pre_post_lr = [
     #("adam", False, False, np.logspace(-4, -0.5, 12)),
-    ("muon", False, True, np.logspace(-2, 1, 16)), 
+    ("muon", False, True, [0.1571421887994887]), 
 ]
 
 d_embeds = [256] #[12*16]
@@ -19,16 +19,17 @@ project = [
     # {"default": "orthogonal"},
     # {"default": "hard_cap"},
     # {"default": "soft_cap"},
-    #{"default": "pure_svd"},
-    # {"default": "spec_wd"},
-    {"default": "spec_hammer"},
+    # {"default": "pure_svd"},
+    {"default": "spec_wd"},
+    # {"default": "spec_hammer"},
     # {"default": "spec_normalize"},
 ]  # key: default or tracker string; value: none, orthogonal, hard_cap, soft_cap1, soft_cap2, soft_cap3, pure_svd
 model_dtypes = ["float32"]   # options: float8_e4m3fn, bfloat16, float32, float64
 project_dtypes = ["float32"]  # options: float8_e4m3fn, bfloat16, float32, float64
 max_embed_inflation_factors = [16]#, 64, 256]#1, 16, 256, 4096]  # Caps the amount duality can increase each column of the embedding gradient
 use_unembeds = [False]
-w_max = [1, 2, 4]#1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
+w_max = [1]#1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]  # only affects soft_cap -- max weight norm to enforce (adaptive weight decay coupling) -- dual_norm=False
+# w_max = [1]
 
 residual_scales = [1]  # (1 - a/num_blocks) * x + (a/num_blocks) * block(x)
 softmax_scale = 1
@@ -37,8 +38,8 @@ blocks_masses = [32]#, 16, 64]  # [1, 5, 25]
 scales_learnable = [False]
 layernorm_substitutes = ["none"]  # none, tanh, rmsnorm, layernorm
 
-weight_decay = [0]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
-# spectral_weight_decay = [0.1]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
+# weight_decay = [0.1]#, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
+spectral_weight_decay = [0.05] #, 1/8, 1/16, 1/32]#, 0.03, 0.1]#0, 0.03, 0.1, 0.3]
 
 seeds = [0]
 data = "cifar"      # fineweb, shakespeare, cifar
@@ -95,8 +96,8 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                             for blocks_mass in blocks_masses:
                                                 for layernorm_substitute in layernorm_substitutes:
                                                     for wmax in w_max:
-                                                        # for spectral_wd in spectral_weight_decay:
-                                                        for wd in weight_decay:
+                                                        for spectral_wd in spectral_weight_decay:
+                                                        # for wd in weight_decay:
                                                             for d_embed in d_embeds:
                                                                 for schedule in schedules:
                                                                     for randomize_label in randomize_labels:
@@ -104,8 +105,8 @@ for proj in project:  # project must come first so parallel jobs take similar ti
                                                                             combinations.append({
                                                                                 'd_embed': d_embed,
                                                                                 'lr': lr,
-                                                                                'wd': wd, #! note that i current hard code weight decay to 0
-                                                                                'spectral_wd': 0,
+                                                                                'wd': 0, #! note that i current hard code weight decay to 0
+                                                                                'spectral_wd': spectral_wd,
                                                                                 'num_blocks': num_blocks,
                                                                                 'seq_len': seq_len,
                                                                                 'num_heads': num_heads,
