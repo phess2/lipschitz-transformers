@@ -4,6 +4,7 @@ import os
 import struct
 import urllib.request
 
+
 def load_mnist(normalize=True):
     """
     Downloads (if needed) and loads the MNIST dataset.
@@ -16,8 +17,12 @@ def load_mnist(normalize=True):
 
     # Download files if needed
     base_url = "https://storage.googleapis.com/cvdf-datasets/mnist/"
-    files = ["train-images-idx3-ubyte.gz", "train-labels-idx1-ubyte.gz",
-             "t10k-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz"]
+    files = [
+        "train-images-idx3-ubyte.gz",
+        "train-labels-idx1-ubyte.gz",
+        "t10k-images-idx3-ubyte.gz",
+        "t10k-labels-idx1-ubyte.gz",
+    ]
 
     for filename in files:
         filepath = os.path.join(data_dir, filename)
@@ -30,7 +35,9 @@ def load_mnist(normalize=True):
     def parse_images(filepath):
         with gzip.open(filepath, "rb") as f:
             _, num_images, rows, cols = struct.unpack(">IIII", f.read(16))
-            return np.frombuffer(f.read(), dtype=np.uint8).reshape(num_images, rows, cols)
+            return np.frombuffer(f.read(), dtype=np.uint8).reshape(
+                num_images, rows, cols
+            )
 
     def parse_labels(filepath):
         with gzip.open(filepath, "rb") as f:

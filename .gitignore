@@ -28,7 +28,14 @@ experiment/dawn
 experiment/scales_plots
 experiment/.env
 
+min_train_MLP/__pycache__/
+
 outLogs/
+
+data/cifar10_files
+data/__pycache__/
+
+experiment/*.pdf
 
 *.sh
 
