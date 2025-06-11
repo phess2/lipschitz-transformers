@@ -40,3 +40,7 @@ experiment/*.pdf
 *.sh
 
 .vscode/
+
+.env
+=3.9
+pyproject.toml
