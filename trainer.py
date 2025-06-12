@@ -45,7 +45,7 @@ class Trainer:
             loss = accum_loss / self.config.accum_steps
             accum_loss = 0.0
 
-            # Apply model-specific dualization if needed
+            # Apply pre-dualization if needed
             if self.config.pre_dualize:
                 grads = self.model.dualize(grads)
 

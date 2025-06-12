@@ -29,7 +29,7 @@ class Muon(Optimizer):
             grads,
         )
         # Calculate parameter updates (momentum)
-        d_params = buf  # In Muon, the buffer itself represents the parameter updates
+        d_params = buf  # In Muon, the momentum buffer is the parameter update (pre-dualization)
         return params, buf, d_params
 
 
