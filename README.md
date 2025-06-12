@@ -1,32 +1,30 @@
-# Modula Training Environment
+# Lipschitz enforced transformer training!
 
-This repository contains a modified version of the Modula library for training neural networks with various optimization techniques. This README will guide you through setting up the environment and running the training code.
+Is weight decay the best we can do? This repo contains the code for the paper "Training Transformers with Enforced Lipschitz Constants." There remains lots to do to train models faster and with regularization guarantees like a Lipschitz constant. The repo has a simple setup to train your own Lipschitz-constrained models, or reproduce our results.
 
-## Setup Instructions
+## Setup
 
-1. Create a new conda environment:
+1. Create environment:
 ```bash
 conda create -n modula python=3.9
 conda activate modula
 ```
 
-2. Install the required dependencies:
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Clone and install the modified Modula library:
+3. Clone repo:
 ```bash
-git clone <your-repo-url>
-cd modula-v2
+git clone <your-repo-name>
+cd <your-repo-name>
 pip install -e .
 ```
 
-## Running Training Examples
+## Train a Lipschitz-enforced transformer
 
-The repository includes several training examples in the `experiment` directory. Here's how to run them:
-
-### CIFAR-10 Training Example
+### Warmup: MLP on CIFAR-10
 
 ```bash
 python experiment/train.py \
@@ -34,14 +32,15 @@ python experiment/train.py \
     --batch_size 512 \
     --model_dtype float32 \
     --project_dtype float32 \
-    --steps 1000 \
-    --lr 0.001 \
-    --w_max 1.0 \
+    --steps 4000 \
+    --lr 0.1 \
+    --w_max 2.0 \
     --wd 0.0 \
-    --optimizer adam \
+    --optimizer muon \
+    --project '{"default": "soft_cap"}' \
     --beta1 0.9 \
-    --beta2 0.999 \
-    --schedule cosine \
+    --beta2 0.95 \
+    --schedule linear \
     --accum_steps 1 \
     --log_interval 10 \
     --val_interval 100 \
@@ -50,7 +49,7 @@ python experiment/train.py \
     --job_idx 0
 ```
 
-### Shakespeare Text Generation Example
+### 2M parameter Shakespeare transformer
 
 ```bash
 python experiment/train.py \
@@ -59,14 +58,15 @@ python experiment/train.py \
     --batch_size 64 \
     --model_dtype float32 \
     --project_dtype float32 \
-    --steps 1000 \
+    --steps 2000 \
     --lr 0.001 \
-    --w_max 1.0 \
+    --w_max 1.6 \
     --wd 0.0 \
-    --optimizer adam \
+    --optimizer muon \
+    --project '{"default": "soft_cap"}' \
     --beta1 0.9 \
-    --beta2 0.999 \
-    --schedule cosine \
+    --beta2 0.95 \
+    --schedule linear \
     --accum_steps 1 \
     --log_interval 10 \
     --val_interval 100 \
@@ -75,27 +75,21 @@ python experiment/train.py \
     --job_idx 0
 ```
 
-## Key Features
+### 145M parameter NanoGPT
 
-- Supports multiple datasets (CIFAR-10, Shakespeare, FineWeb)
-- Various optimization techniques including:
-  - Adam optimizer
-  - Learning rate schedules (linear, cosine, sqrt)
-  - Weight decay
-  - Gradient accumulation
-  - Spectral normalization
-- Training monitoring with:
-  - Loss tracking
-  - Accuracy metrics
-  - GPU memory usage
-  - RAM usage
-  - ETA calculations
+The [modded NanoGPT](https://github.com/KellerJordan/modded-nanogpt) repo by Keller Jordan has a wonderful script that trains a GPT-2 small scale transformer in under 3 minutes on an 8xH100. We modified the script to enforce Lipschitz constraints. The script is `/nanogpt/run.py`. The setup instructions are identical to modded NanoGPT. There are some options, like which enforcement method you want to use (spectral normalize, spectral cap). Try it out! Shakespeare transformers could train faster with Lipschitz constraints, and we would love to hear if you can train at NanoGPT scale faster using strong weight constraints.
 
-## Notes
+## Acknowledgments
 
-- The training code automatically handles data loading and preprocessing
-- By default, the DataLoader drops incomplete batches at the end of each epoch
-- Training progress is logged with timestamps and resource usage statistics
-- Checkpoints are saved periodically during training
+Thank you to Lambda Labs and Rami Seid for supporting the work with compute credits.
 
-For more detailed information about the training parameters and their effects, refer to the argument parser in `experiment/train.py`.
+## Citation
+
+```bibtex
+@article{newhouse2025lipschitztransformers,
+  title={Training Transformers with Enforced Lipschitz Constants},
+  author={Laker Newhouse, R. Preston Hess, Franz Cesista, Andrii Zahorodnii, Jeremy Bernstein, Phillip Isola},
+  journal={arXiv:???????????},
+  year={2025}
+}
+```
