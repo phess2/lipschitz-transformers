@@ -11,62 +11,19 @@ As always, there is a lot of work left to train models faster and more scalably 
 ## Setup
 
 1. `git clone https://github.com/Arongil/lipschitz-transformers`
-2. `conda create -n lipschitz python=3.9`
-3. `conda activate lipschitz`
+2. `python -m venv lipschitz`
+3. `source lipschitz/bin/activate`
 4. `pip install -e .`
 
 ## Train a Lipschitz-enforced transformer
 
-### Warmup #1: MLP on CIFAR-10
+All three examples are available in `experiment.ipynb`. Just change the config you select, and run. Any of the examples in our paper are reproducible here, or you can try your own settings or your own constraint methods.
 
-```bash
-python experiment/train.py \
-    --data cifar \
-    --batch_size 512 \
-    --model_dtype float32 \
-    --project_dtype float32 \
-    --steps 4000 \
-    --lr 0.1 \
-    --w_max 2.0 \
-    --wd 0.0 \
-    --optimizer muon \
-    --project '{"default": "soft_cap"}' \
-    --beta1 0.9 \
-    --beta2 0.95 \
-    --schedule linear \
-    --accum_steps 1 \
-    --log_interval 10 \
-    --val_interval 100 \
-    --val_iters 10 \
-    --seed 0 \
-    --job_idx 0
-```
+Warmup #1: MLP on CIFAR-10, unconstrained (baseline)
 
-### Warmup #2: Shakespeare transformer with 2M parameters
+Warmup #2: MLP on CIFAR-10, constrained (ours)
 
-```bash
-python experiment/train.py \
-    --data shakespeare \
-    --seq_len 128 \
-    --batch_size 64 \
-    --model_dtype float32 \
-    --project_dtype float32 \
-    --steps 2000 \
-    --lr 0.001 \
-    --w_max 1.6 \
-    --wd 0.0 \
-    --optimizer muon \
-    --project '{"default": "soft_cap"}' \
-    --beta1 0.9 \
-    --beta2 0.95 \
-    --schedule linear \
-    --accum_steps 1 \
-    --log_interval 10 \
-    --val_interval 100 \
-    --val_iters 10 \
-    --seed 0 \
-    --job_idx 0
-```
+Warmup #3: Shakespeare transformer with 2M parameters
 
 ### The real deal: 145M parameter NanoGPT
 
