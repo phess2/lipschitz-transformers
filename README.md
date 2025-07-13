@@ -66,15 +66,11 @@ python experiment/train.py \
 
 ### The real deal: 145M parameter NanoGPT
 
-The [modded NanoGPT](https://github.com/KellerJordan/modded-nanogpt) repo by Keller Jordan has a wonderful script that trains a GPT-2 small scale transformer in under 3 minutes on an 8xH100. We modified the script to enforce Lipschitz constraints. You can run the script with `/nanogpt/run.sh` -- see the subdirectory's README for setup instructions.
-
-
-
-. There are some options, like which enforcement method you want to use (spectral normalize, spectral cap). Try it out! Shakespeare transformers could train faster with Lipschitz constraints, and we would love to hear if you can train at NanoGPT scale faster using strong weight constraints.
+The [modded NanoGPT](https://github.com/KellerJordan/modded-nanogpt) repo by Keller Jordan has a wonderful script that trains a GPT-2 small scale transformer in under 3 minutes on an 8xH100. We modified the script to enforce Lipschitz constraints. You can run the script with `/nanogpt/run.sh` -- see the subdirectory's README for setup instructions. There's a default spectral cap example, plus a spectral normalization example.
 
 ## Acknowledgments
 
-Thank you to Lambda Labs and Rami Seid for supporting the work with compute credits.
+Thank you to Lambda Labs and Rami Seid for supporting the work with compute credits!
 
 ## Citation
 
@@ -82,7 +78,7 @@ Thank you to Lambda Labs and Rami Seid for supporting the work with compute cred
 @article{newhouse2025lipschitztransformers,
   title={Training Transformers with Enforced Lipschitz Constants},
   author={Laker Newhouse, R. Preston Hess, Franz Cesista, Andrii Zahorodnii, Jeremy Bernstein, Phillip Isola},
-  journal={arXiv:???????????},
+  journal={arXiv}
   year={2025}
 }
 ```
