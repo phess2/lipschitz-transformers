@@ -4,7 +4,9 @@
 
 What if large scale transformer training could be free of loss spikes? Is there a better way than weight decay?
 
-This repo contains the code for "Training Transformers with Enforced Lipschitz Constants." Lipschitz constants are a bound on the model's sensitivity to input or weight changes; by controlling Lipschitz constants, we can stabilize training by preventing exploding attention logits, and the model artifact at the end can have higher adversarial robustness. We compare existing methods and our proposed _spectral cap_ and _spectral hammer_ methods. There is a lot of work left to train models faster and with regularization guarantees. This repo has a simple setup to train your own Lipschitz-constrained models, or reproduce our results.
+Lipschitz Constants." Lipschitz constants are a bound on the model's sensitivity to input or weight changes. By controlling them, we can stabilize training by preventing exploding attention logits, set adversarial robustness bounds in advance, and possibly create models more compatible with low precision inference. We compare pairs of (optimizer, weight constraint method) across AdamW / Muon and existing constraint methods / our proposed methods _spectral cap_ and _spectral hammer_. We find that Muon improves weight constraint methods across the board in the Lipschitz vs. performance tradeoff. And we show that it is possible to train a 145M parameter NanoGPT to competitive accuracy with entirely constrained weights.
+
+As always, there is a lot of work left to train models faster and more scalably (e.g., with Lipschitz guarantees). This repo has a setup to reproduce our results, or train your own Lipschitz-constrained models.
 
 ## Setup
 
