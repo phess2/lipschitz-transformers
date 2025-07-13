@@ -24,3 +24,5 @@ The GPT architecture follows Modula parameterization, which means:
     * Attention is defined like `softmax(QK^T / d)`, using `1/d` scaling rather than `1/sqrt(d)`
 
 The Modula parameterization is responsible for a significant part of lowering the Lipschitz constant. The other part is weight norm constraints.
+
+The default method used is spectral capping (`train_spectral_cap.py`). You can try spectral normalization from [Miyato et al. 2018](https://arxiv.org/abs/1802.05957) (`train_spectral_normalize.py`). The relevant change is around line 260 in the Muon update step. The `w_max` hyperparameter enforces a max spectral norm in either case, but using a different method.

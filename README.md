@@ -1,30 +1,19 @@
-# Lipschitz enforced transformer training!
+# Lipschitz transformers using Muon + weight constraints!
 
-Is weight decay the best we can do? This repo contains the code for the paper "Training Transformers with Enforced Lipschitz Constants." There remains lots to do to train models faster and with regularization guarantees like a Lipschitz constant. The repo has a simple setup to train your own Lipschitz-constrained models, or reproduce our results.
+What if large scale transformer training could be free of loss spikes? Is there a better way than weight decay?
+
+This repo contains the code for "Training Transformers with Enforced Lipschitz Constants." Lipschitz constants are a bound on the model's sensitivity to input or weight changes; by controlling Lipschitz constants, we can stabilize training by preventing exploding attention logits, and the model artifact at the end can have higher adversarial robustness. We compare existing methods and our proposed _spectral cap_ and _spectral hammer_ methods. There is a lot of work left to train models faster and with regularization guarantees. This repo has a simple setup to train your own Lipschitz-constrained models, or reproduce our results.
 
 ## Setup
 
-1. Create environment:
-```bash
-conda create -n modula python=3.9
-conda activate modula
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. Clone repo:
-```bash
-git clone <your-repo-name>
-cd <your-repo-name>
-pip install -e .
-```
+1. `git clone https://github.com/Arongil/lipschitz-transformers`
+2. `conda create -n lipschitz python=3.9`
+3. `conda activate lipschitz`
+4. `pip install -e .`
 
 ## Train a Lipschitz-enforced transformer
 
-### Warmup: MLP on CIFAR-10
+### Warmup #1: MLP on CIFAR-10
 
 ```bash
 python experiment/train.py \
@@ -49,7 +38,7 @@ python experiment/train.py \
     --job_idx 0
 ```
 
-### 2M parameter Shakespeare transformer
+### Warmup #2: Shakespeare transformer with 2M parameters
 
 ```bash
 python experiment/train.py \
@@ -75,9 +64,13 @@ python experiment/train.py \
     --job_idx 0
 ```
 
-### 145M parameter NanoGPT
+### The real deal: 145M parameter NanoGPT
 
-The [modded NanoGPT](https://github.com/KellerJordan/modded-nanogpt) repo by Keller Jordan has a wonderful script that trains a GPT-2 small scale transformer in under 3 minutes on an 8xH100. We modified the script to enforce Lipschitz constraints. The script is `/nanogpt/run.py`. The setup instructions are identical to modded NanoGPT. There are some options, like which enforcement method you want to use (spectral normalize, spectral cap). Try it out! Shakespeare transformers could train faster with Lipschitz constraints, and we would love to hear if you can train at NanoGPT scale faster using strong weight constraints.
+The [modded NanoGPT](https://github.com/KellerJordan/modded-nanogpt) repo by Keller Jordan has a wonderful script that trains a GPT-2 small scale transformer in under 3 minutes on an 8xH100. We modified the script to enforce Lipschitz constraints. You can run the script with `/nanogpt/run.sh` -- see the subdirectory's README for setup instructions.
+
+
+
+. There are some options, like which enforcement method you want to use (spectral normalize, spectral cap). Try it out! Shakespeare transformers could train faster with Lipschitz constraints, and we would love to hear if you can train at NanoGPT scale faster using strong weight constraints.
 
 ## Acknowledgments
 
