@@ -6,7 +6,7 @@ What if large scale transformer training could be free of loss spikes? Is there 
 
 Lipschitz constants are a bound on the model's sensitivity to input or weight changes. By controlling them, we can stabilize training by preventing exploding attention logits, set adversarial robustness bounds in advance, and possibly create models more compatible with low precision inference. We compare pairs of (optimizer, weight constraint method) across AdamW / Muon and existing constraint methods / our proposed methods _spectral cap_ and _spectral hammer_. We find that Muon improves weight constraint methods across the board in the Lipschitz vs. performance tradeoff. And we show that it is possible to train a 145M parameter NanoGPT to competitive accuracy with entirely constrained weights.
 
-As always, there is a lot of work left to train models faster and more scalably (e.g., with Lipschitz guarantees). This repo has a setup to reproduce our results, or train your own Lipschitz-constrained models.
+As always, there is a lot of work left to train models faster and more scalably (e.g., with Lipschitz guarantees). This repo has a setup to reproduce our results, or train your own Lipschitz-constrained models. Our data is also available on [Huggingface](https://huggingface.co/phess2/lipschitz-transformers).
 
 ## Setup
 
@@ -24,6 +24,8 @@ Warmup #1: MLP on CIFAR-10, unconstrained (baseline)
 Warmup #2: MLP on CIFAR-10, constrained (ours)
 
 Warmup #3: Shakespeare transformer with 2M parameters
+
+To run the Shakespeare transformer from a checkpoint (or check out some of our checkpoints on [Huggingface](https://huggingface.co/phess2/lipschitz-transformers)), use `run_checkpoint.py`.
 
 ### The real deal: 145M parameter NanoGPT
 
