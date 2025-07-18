@@ -1,6 +1,6 @@
 # Training transformers with enforced Lipschitz constants
 
-![Main method: 1) use Muon to constrain the weight update norm, 2) project weights to have a max singular value, 3) norm guarantee.](assets/method.jpg))
+![Main method: 1) use Muon to constrain the weight update norm, 2) project weights to have a max singular value, 3) norm guarantee.](assets/method.jpg)
 
 What if large scale transformer training could be free of loss spikes? Is there a better way than weight decay?
 
