@@ -41,7 +41,7 @@ Thank you to Lambda Labs and Rami Seid for supporting the work with compute cred
 @article{newhouse2025lipschitztransformers,
   title={Training Transformers with Enforced Lipschitz Constants},
   author={Laker Newhouse, R. Preston Hess, Franz Cesista, Andrii Zahorodnii, Jeremy Bernstein, Phillip Isola},
-  journal={arXiv}
+  journal={arXiv preprint arxiv:2507.13338},
   year={2025}
 }
 ```
