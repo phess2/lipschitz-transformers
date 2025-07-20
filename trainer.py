@@ -25,6 +25,7 @@ class Trainer:
         accum_step = 0
         accum_loss = 0.0
         accum_grad = jax.tree.map(jnp.zeros_like, params)
+        log = {}
 
         for inputs, targets in self.train_loader:
             # Forward and backward pass
@@ -79,8 +80,9 @@ class Trainer:
                 logits = self.model(inputs, params)
                 train_preds = jnp.argmax(logits, axis=-1)
                 train_acc = jnp.mean(train_preds == targets)
+                log = self.model.log(params, updates)
 
-                self.logger.log_training(self.step, loss, train_acc)
+                self.logger.log_training(self.step, loss, train_acc, log)
 
             # Validate periodically
             if self.step % self.config.val_interval == 0:

@@ -79,14 +79,15 @@ class Logger:
     def __init__(self, config):
         self.config = config
         self.start_time = time.time()
-        self.results = {
+        self.log = {}
+        self.intermediate_results = {
             "losses": [],
             "val_losses": [],
             "accuracies": [],
             "train_accuracies": [],
         }
 
-    def log_training(self, step, loss, accuracy):
+    def log_training(self, step, loss, accuracy, log):
         """Log training metrics."""
         # Calculate ETA
         steps_done = (1 + step) * (1 + self.config.val_iters / self.config.val_interval)
@@ -97,8 +98,9 @@ class Logger:
         eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_seconds))
 
         # Log metrics
-        self.results["losses"].append(float(loss))
-        self.results["train_accuracies"].append(float(accuracy))
+        self.intermediate_results["losses"].append(float(loss))
+        self.intermediate_results["train_accuracies"].append(float(accuracy))
+        self.log = log
 
         # Print log message
         memory_stats = jax.device_get(jax.devices()[0].memory_stats())
@@ -113,8 +115,8 @@ class Logger:
 
     def log_validation(self, step, metrics):
         """Log validation metrics."""
-        self.results["val_losses"].append(float(metrics["loss"]))
-        self.results["accuracies"].append(float(metrics["accuracy"]))
+        self.intermediate_results["val_losses"].append(float(metrics["loss"]))
+        self.intermediate_results["accuracies"].append(float(metrics["accuracy"]))
 
         print(
             f"  Step:{step}/{self.config.steps} val_loss:{metrics['loss']:.4f} val_acc:{metrics['accuracy']:.4f}"
@@ -122,8 +124,9 @@ class Logger:
 
     def get_results(self):
         """Return all results."""
-        self.results["total_time"] = time.time() - self.start_time
-        return self.results
+        self.log["total_time"] = time.time() - self.start_time
+        self.log = {**self.log, **self.intermediate_results}
+        return self.log
 
 
 def save_results(results, weights_checkpoints, model, config):
