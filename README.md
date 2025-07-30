@@ -33,6 +33,8 @@ Warmup #3: Shakespeare transformer with 2M parameters
 
 To run the Shakespeare transformer from a checkpoint (or check out some of our checkpoints on [Huggingface](https://huggingface.co/phess2/lipschitz-transformers)), use `run_checkpoint.py`.
 
+Note: the polynomial coefficients used to implement hard cap in this repo were derived in March/April, before Leloy Kun and Jianlin Su had invented the formula for hard cap involving msign [[1](https://leloykun.github.io/ponder/spectral-clipping), [2](https://www.lakernewhouse.com/writing/muon-3)]. We're keeping the coefficients for reproducibility, but it'd be great to experiment with the recent more exact formulas!
+
 ### The real deal: 145M parameter NanoGPT
 
 The [modded NanoGPT](https://github.com/KellerJordan/modded-nanogpt) repo by Keller Jordan has a wonderful script that trains a GPT-2 small scale transformer in under 3 minutes on an 8xH100. We modified the script to enforce Lipschitz constraints. You can run the script with `/nanogpt/run.sh` -- see the subdirectory's README for setup instructions. There's a default spectral cap example, plus a spectral normalization example.
