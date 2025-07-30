@@ -36,7 +36,7 @@ def _orthogonalize(M):
 
 
 def _hard_cap(M):
-    """Apply min(1, x) approximately to the singular values of a single matrix. Credit: Franz Cecista."""
+    """Apply min(1, x) approximately to the singular values of a single matrix. Credit: Franz Cesista."""
     coeffs = [
         (0.805032, 0.206361, -0.019763),
         (0.649867, 0.162935, -0.011150),
