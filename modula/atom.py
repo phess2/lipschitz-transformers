@@ -13,7 +13,7 @@ def batch_project(M, project_fn):
 
 
 def _orthogonalize(M):
-    """Orthogonalize a single matrix, always bfloat16. Credit for coefficients to @YouJiacheng and @leloykun."""
+    """Orthogonalize a single matrix, always bfloat16. Credit for coefficients to {anon}"""
     abc_list = [
         (3955 / 1024, -8306 / 1024, 5008 / 1024),
         (3735 / 1024, -6681 / 1024, 3463 / 1024),
@@ -36,7 +36,7 @@ def _orthogonalize(M):
 
 
 def _hard_cap(M):
-    """Apply min(1, x) approximately to the singular values of a single matrix. Credit: Franz Cesista."""
+    """Apply min(1, x) approximately to the singular values of a single matrix. Credit: {anon}"""
     coeffs = [
         (0.805032, 0.206361, -0.019763),
         (0.649867, 0.162935, -0.011150),
