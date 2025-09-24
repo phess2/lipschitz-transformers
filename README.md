@@ -2,21 +2,17 @@
 
 ![Main method: 1) use Muon to constrain the weight update norm, 2) project weights to have a max singular value, 3) norm guarantee.](assets/method.jpg)
 
-[Paper](https://arxiv.org/abs/2507.13338)
-| [Data](https://huggingface.co/phess2/lipschitz-transformers)
-| [X](https://x.com/LakerNewhouse/status/1946646237262090434)
-
 What if large scale transformer training could be free of loss spikes? Is there a better way than weight decay?
 
 A Lipschitz bound controls how sensitive a network is to input or weight changes. By controlling it, we can stabilize training by preventing exploding attention logits, set adversarial robustness bounds in advance, and possibly create models more compatible with low precision inference.
 
 We compare pairs of [optimizer, weight constraint method] across AdamW / Muon and existing constraint methods / our proposed methods _spectral cap_ and _spectral hammer_. We find that Muon improves weight constraint methods across the board in the Lipschitz vs. performance tradeoff. And we show that it is possible to train a 145M parameter NanoGPT to competitive accuracy with entirely constrained weights.
 
-As always, there is a lot of work left to train models faster and more scalably (e.g., with Lipschitz guarantees). This repo has a setup to reproduce our results, or train your own Lipschitz-constrained models. Our data is also available on [Huggingface](https://huggingface.co/phess2/lipschitz-transformers).
+As always, there is a lot of work left to train models faster and more scalably (e.g., with Lipschitz guarantees). This repo has a setup to reproduce our results, or train your own Lipschitz-constrained models.
 
 ## Setup
 
-1. `git clone https://github.com/Arongil/lipschitz-transformers`
+1. `git clone {url}`
 2. `python -m venv lipschitz`
 3. `source lipschitz/bin/activate`
 4. `pip install -e .`
@@ -31,25 +27,8 @@ Warmup #2: MLP on CIFAR-10, constrained (ours)
 
 Warmup #3: Shakespeare transformer with 2M parameters
 
-To run the Shakespeare transformer from a checkpoint (or check out some of our checkpoints on [Huggingface](https://huggingface.co/phess2/lipschitz-transformers)), use `run_checkpoint.py`.
-
-Note: the polynomial coefficients used to implement hard cap in this repo were derived in March/April, before Leloy Kun and Jianlin Su had invented the formula for hard cap involving msign [[1](https://leloykun.github.io/ponder/spectral-clipping), [2](https://www.lakernewhouse.com/writing/muon-3)]. We're keeping the coefficients for reproducibility, but it'd be great to experiment with the recent more exact formulas!
+To run the Shakespeare transformer from a checkpoint, use `run_checkpoint.py`.
 
 ### The real deal: 145M parameter NanoGPT
 
 The [modded NanoGPT](https://github.com/KellerJordan/modded-nanogpt) repo by Keller Jordan has a wonderful script that trains a GPT-2 small scale transformer in under 3 minutes on an 8xH100. We modified the script to enforce Lipschitz constraints. You can run the script with `/nanogpt/run.sh` -- see the subdirectory's README for setup instructions. There's a default spectral cap example, plus a spectral normalization example.
-
-## Acknowledgments
-
-Thank you to Lambda Labs and Rami Seid for supporting the work with compute credits!
-
-## Citation
-
-```bibtex
-@article{newhouse2025lipschitztransformers,
-  title={Training Transformers with Enforced Lipschitz Constants},
-  author={Laker Newhouse, R. Preston Hess, Franz Cesista, Andrii Zahorodnii, Jeremy Bernstein, Phillip Isola},
-  journal={arxiv:2507.13338},
-  year={2025}
-}
-```
