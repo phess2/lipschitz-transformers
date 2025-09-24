@@ -16,13 +16,13 @@ torch.empty(1, device="cuda", requires_grad=True).backward() # prevents a bug on
 from torch import Tensor, nn
 import torch.nn.functional as F
 import torch.distributed as dist
-# use of FlexAttention contributed by @KoszarskyB
+# use of FlexAttention contributed by {anon}
 from torch.nn.attention.flex_attention import BlockMask, flex_attention
 #torch._inductor.config.coordinate_descent_tuning = True # we have banned this flag for new records because it causes compilation to take 30min
 #torch.set_float32_matmul_precision('high')
 
 # -----------------------------------------------------------------------------
-# Custom operators: FP8 matmul by @YouJiacheng
+# Custom operators: FP8 matmul by {anon}
 
 @torch.library.custom_op("nanogpt::mm", mutates_args=())
 def mm_op(x: Tensor, w: Tensor, x_s: float, w_s: float, grad_s: float) -> tuple[Tensor, Tensor, Tensor]:
@@ -116,7 +116,7 @@ def zeropower_via_newtonschulz5(G: Tensor, steps: int) -> Tensor:
     where S' is diagonal with S_{ii}' ~ Uniform(0.5, 1.5), which turns out not to hurt model
     performance at all relative to UV^T, where USV^T = G is the SVD.
     """
-    assert G.ndim >= 2 # batched Muon implementation by @scottjmaddox, and put into practice in the record by @YouJiacheng
+    assert G.ndim >= 2 # batched Muon implementation by {anon}, and put into practice in the record by {anon}
     a, b, c = (3.4445, -4.7750,  2.0315)
     X = G.bfloat16()
     if G.size(-2) > G.size(-1):
@@ -127,7 +127,7 @@ def zeropower_via_newtonschulz5(G: Tensor, steps: int) -> Tensor:
     # Perform the NS iterations
     for _ in range(steps):
         A = X @ X.mT
-        B = b * A + c * A @ A # quintic computation strategy adapted from suggestion by @jxbz, @leloykun, and @YouJiacheng
+        B = b * A + c * A @ A # quintic computation strategy adapted from suggestion by {anon}
         X = a * X + B @ X
     
     if G.size(-2) > G.size(-1):
@@ -157,7 +157,7 @@ def orthogonalize(M):
     X = X / (X.norm(dim=(-2, -1), keepdim=True) + 1e-7)
     for a, b, c in abc_list:
         A = X @ X.mT
-        B = b * A + c * A @ A # quintic computation strategy adapted from suggestion by @jxbz, @leloykun, and @YouJiacheng
+        B = b * A + c * A @ A # quintic computation strategy adapted from suggestion by {anon}
         X = a * X + B @ X
     
     if transpose:
@@ -249,7 +249,7 @@ class Muon(torch.optim.Optimizer):
             params: list[Tensor] = group["params"]
             handle = None
             params_world = None
-            def update_prev(): # optimized Muon implementation contributed by @YouJiacheng
+            def update_prev(): # optimized Muon implementation contributed by {anon}
                 handle.wait()
                 for p_world, g_world in zip(params_world, update_buffer_views):
                     scale = torch.sqrt(torch.tensor(p_world.size(-2) / p_world.size(-1)))
@@ -275,7 +275,7 @@ class Muon(torch.optim.Optimizer):
                 else:
                     g = update_buffer_views[self.rank]
                 if base_i > 0:
-                    update_prev() # async all_gather instead of sync all_reduce by @YouJiacheng
+                    update_prev() # async all_gather instead of sync all_reduce by {anon}
                 handle = dist.all_gather_into_tensor(update_buffer, g, async_op=True)
                 params_world = params[base_i : base_i + self.world_size]
             update_prev()
@@ -311,7 +311,7 @@ class CastedLinear(nn.Linear):
 class Rotary(nn.Module):
     def __init__(self, dim: int, max_seq_len: int):
         super().__init__()
-        # half-truncate RoPE by @YouJiacheng (w/ base freq tuning)
+        # half-truncate RoPE by {anon} (w/ base freq tuning)
         angular_freq = (1 / 1024) ** torch.linspace(0, 1, steps=dim//4, dtype=torch.float32)
         angular_freq = torch.cat([angular_freq, angular_freq.new_zeros(dim//4)])
         t = torch.arange(max_seq_len, dtype=torch.float32)
@@ -341,7 +341,7 @@ class CausalSelfAttention(nn.Module):
         self.attn_v = CastedLinear(dim, hdim, W_max=W_max)
         self.rotary = Rotary(head_dim, max_seq_len)
         self.c_proj = CastedLinear(hdim, dim, W_max=W_max)
-        self.c_proj.weight.detach().zero_() # zero init suggested by @Grad62304977
+        self.c_proj.weight.detach().zero_() # zero init suggested by {anon}
 
     def forward(self, x: Tensor, block_mask: BlockMask):
         B, T = x.size(0), x.size(1) # batch size, sequence length
@@ -350,8 +350,8 @@ class CausalSelfAttention(nn.Module):
         k = self.attn_k(x).view(B, T, self.num_heads, self.head_dim)
         v = self.attn_v(x).view(B, T, self.num_heads, self.head_dim)
         q, k = self.rotary(q), self.rotary(k)
-        # scale the attention logits by given constant, instead of the default head_dim**-0.5, by @leloykun
-        # inspired by learnable scalars used by @brendanh0gan https://x.com/hi_tysam/status/1879693583898591283
+        # scale the attention logits by given constant, instead of the default head_dim**-0.5, by {anon}
+        # inspired by learnable scalars used by {anon}
         y = flex_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), block_mask=block_mask, scale=self.softmax_scale/self.head_dim).transpose(1, 2)
         y = y.contiguous().view(B, T, self.num_heads * self.head_dim) # re-assemble all head outputs side by side
         y = self.c_proj(y / 3)
@@ -363,7 +363,7 @@ class MLP(nn.Module):
         hdim = 4 * dim
         self.c_fc = CastedLinear(dim, hdim, W_max=W_max)
         self.c_proj = CastedLinear(hdim, dim, W_max=W_max)
-        self.c_proj.weight.detach().zero_() # zero init suggested by @Grad62304977
+        self.c_proj.weight.detach().zero_() # zero init suggested by {anon}
 
     def forward(self, x: Tensor):
         x = self.c_fc(x)
@@ -398,15 +398,15 @@ class GPT(nn.Module):
         super().__init__()
         self.final_scale = final_scale
         self.embed = nn.Embedding(vocab_size, model_dim, max_norm=emb_w_max * model_dim**0.5)
-        # token value embeddings by @KoszarskyB - inspired by @Grad62304977's value residual implementation following https://arxiv.org/abs/2410.17897
-        # value embedding code simplification inspired by @ragulpr https://github.com/KellerJordan/modded-nanogpt/pull/78
+        # token value embeddings by {anon}
+        # value embedding code simplification inspired by {anon}
         # self.value_embeds = nn.ModuleList([nn.Embedding(vocab_size, model_dim) for _ in range(3)])
         self.blocks = nn.ModuleList([Block(model_dim, num_heads, max_seq_len, num_layers, W_max) for i in range(num_layers)])
         # there are only 50257 unique GPT-2 tokens; we extend to nearest multiple of 128 for efficiency.
-        # suggested to me by @Grad62304977. this originates from Karpathy's experiments.
+        # suggested to me by {anon}
         self.lm_head = CastedLinear(model_dim, next_multiple_of_n(vocab_size, n=128), W_max=lm_head_w_max)
                                     # use_fp8=True, x_s=(model_dim**0.5)/448, w_s=24/448, grad_s=1/448)
-        self.lm_head.weight.detach().zero_() # @Grad62304977
+        self.lm_head.weight.detach().zero_()
         # Add learnable skip connection weights for decoder layers
         assert num_layers % 2 == 0
 
@@ -424,7 +424,7 @@ class GPT(nn.Module):
             indices = dense_blockmask.argsort(dim=-1, descending=False, stable=True).flip(-1).to(torch.int32)
             return num_blocks[None, None].contiguous(), indices[None, None].contiguous()
 
-        # manual block mask creation by @YouJiacheng
+        # manual block mask creation by {anon}
         assert len(input_seq) % BLOCK_SIZE == 0
         NUM_BLOCKS = len(input_seq) // BLOCK_SIZE
         block_idx = torch.arange(NUM_BLOCKS, dtype=torch.int32, device="cuda")
@@ -447,7 +447,7 @@ class GPT(nn.Module):
                 BLOCK_SIZE=BLOCK_SIZE,
                 mask_mod=document_causal,
             )
-        # Long-short SWA block masks by @leloykun & @YouJiacheng, adapated from suggestion by @Grad62304977, following Gemma 2 paper
+        # Long-short SWA block masks by {anon}
         return build_bm(sliding_window_num_blocks), build_bm(sliding_window_num_blocks // 2)
 
     def forward(self, input_seq: Tensor, target_seq: Tensor, sliding_window_num_blocks: Tensor, return_logits_argmax: bool = False):
@@ -479,8 +479,6 @@ class GPT(nn.Module):
         max_act_rms_norm_list[-1] = logits.norm(dim=-1).max() / (logits.size(-1)**0.5)
         max_act_entry_list[-1] = logits.abs().max()
         logits = logits * self.final_scale
-        # @Grad62304977 added tanh softcapping following Gemma 2 paper, @KoszarskyB reduced it from 30 to 15, @YouJiacheng shifted it by +15 (2*sigmoid(2*x)=tanh(x)+1)
-        # logits = 30 * torch.sigmoid(logits / (7.5 * x.size(-1)**0.5))
         loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target_seq, reduction='sum' if self.training else 'mean')
         max_logits = logits.max(dim=-1)[1] if return_logits_argmax else None
         return loss, max_logits, max_act_rms_norm_list, max_act_entry_list
@@ -494,9 +492,9 @@ def _load_data_shard(file: Path):
     assert header[1] == 1, "unsupported version"
     num_tokens = int(header[2]) # number of tokens (claimed)
     with file.open("rb", buffering=0) as f:
-        tokens = torch.empty(num_tokens, dtype=torch.uint16, pin_memory=True) # avoid pin_memory copy by @YouJiacheng
+        tokens = torch.empty(num_tokens, dtype=torch.uint16, pin_memory=True) # avoid pin_memory copy by {anon}
         f.seek(256 * 4)
-        nbytes = f.readinto(tokens.numpy()) # avoid bytes->array copy by @YouJiacheng
+        nbytes = f.readinto(tokens.numpy()) # avoid bytes->array copy by {anon}
         assert nbytes == 2 * num_tokens, "number of tokens read does not match header"
     return tokens
 
@@ -634,8 +632,7 @@ if args.lm_head_muon:
     adam_params = [dict(params=embed_params, lr=0.1)]
 else:
     adam_params = [dict(params=head_params, lr=parser_args.head_lr), dict(params=embed_params, lr=0.1)]
-# small adam epsilon by @YouJiacheng. this is an alternate method of fixing the world_size dependence
-# discovered by @fernbear.bsky.social https://x.com/hi_tysam/status/1879692937589875094
+
 optimizer1 = torch.optim.Adam(adam_params, betas=(0.8, 0.95), eps=1e-10, fused=True)
 optimizer2 = Muon(hidden_matrix_params, lr=parser_args.hidden_lr, momentum=0.95, w_max=args.w_max, rank=rank, world_size=world_size)
 optimizer3 = Muon(qkv_params, lr=parser_args.qkv_lr, momentum=0.95, w_max=args.w_max, rank=rank, world_size=world_size)
@@ -666,7 +663,7 @@ def get_window_size_blocks(step: int):
     x = step / args.num_iterations # progress in training
     assert 0 <= x <= 1
     # Linearly increase the block-wise sliding window size over training 128 -> 1792
-    # increase by @fernbear.bsky.social; block-wise by @YouJiacheng
+    # increase by {anon}
     window_size = next_multiple_of_n(1728 * x, n=128)
     return get_window_size_blocks_helper(window_size)
 
